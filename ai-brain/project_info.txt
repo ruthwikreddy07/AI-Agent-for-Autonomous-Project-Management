@@ -1,0 +1,6 @@
+PROJECT SECRET MEMORY:
+- The project budget for Q3 is $50,000.
+- The lead developer is Mike, but he is on vacation until Tuesday.
+- The main stakeholder is Sarah from the Marketing Team.
+- We must use the 'Blue-Dark' color scheme for the new dashboard.
+- The deadline for the Beta launch is December 15th.

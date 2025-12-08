@@ -1,0 +1,14 @@
+# Secrets (Matches in any folder)
+token.json
+credentials.json
+req.txt
+.env
+
+# System & Heavy Files (Matches in any folder)
+__pycache__/
+venv/
+node_modules/
+.angular/
+.vscode/
+*.log
+dist/
