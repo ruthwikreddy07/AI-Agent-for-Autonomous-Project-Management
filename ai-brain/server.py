@@ -93,11 +93,23 @@ class User(BaseModel):
 class UserRequest(BaseModel):
     message: str
 
-# Memory
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# --- MEMORY CONFIGURATION ---
+
+# 1. Pinecone (Database)
 pc = Pinecone(api_key=PINECONE_API_KEY)
 memory_index = pc.Index(name="project-memory", host=PINECONE_HOST)
+
+# 2. LLM (The Brain)
 llm = ChatGroq(model="llama-3.1-8b-instant") 
+
+# 3. Embedding (The API - Replaces SentenceTransformer)
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+
+def generate_embedding(text: str):
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    response = requests.post(HF_API_URL, headers=headers, json={"inputs": text, "options": {"wait_for_model": True}})
+    return response.json()
 
 # Helpers
 def get_trello_id_by_email(email: str) -> str:
