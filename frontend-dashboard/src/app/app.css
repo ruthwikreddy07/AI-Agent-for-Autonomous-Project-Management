@@ -1,0 +1,213 @@
+/* Enterprise Dark Theme */
+:host {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  display: flex;
+  height: 100vh;
+  background-color: #111;
+  color: #e0e0e0;
+  overflow: hidden;
+}
+
+/* LAYOUT GRID */
+.main-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 300px; /* Sidebar, Main Chat, Info Panel */
+  width: 100%;
+  height: 100%;
+}
+
+/* LEFT SIDEBAR */
+.sidebar {
+  background-color: #1a1a1a;
+  border-right: 1px solid #333;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.logo {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #00ff88;
+  margin-bottom: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-item {
+  padding: 12px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #888;
+  transition: 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-item:hover, .nav-item.active {
+  background-color: #252525;
+  color: white;
+}
+
+/* CENTER: CHAT AREA */
+.chat-area {
+  display: flex;
+  flex-direction: column;
+  background-color: #121212;
+  position: relative;
+  height: 100vh; /* Force full height */
+  overflow: hidden; /* Prevent double scrollbars */
+}
+
+.messages-container {
+  flex: 1; /* Grow to fill available space */
+  padding: 30px;
+  overflow-y: auto; /* Enable scroll inside this box */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0; /* Crucial for Flexbox scrolling */
+}
+
+.message {
+  max-width: 70%;
+  padding: 15px 20px;
+  border-radius: 12px;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.msg-user {
+  align-self: flex-end;
+  background-color: #2563eb; /* Professional Blue */
+  color: white;
+  border-bottom-right-radius: 2px;
+}
+
+.msg-ai {
+  align-self: flex-start;
+  background-color: #2a2a2a;
+  border: 1px solid #333;
+  border-bottom-left-radius: 2px;
+}
+
+.msg-system {
+  align-self: center;
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 10px;
+}
+
+/* APPROVAL CARD */
+.approval-card {
+  background: #1e1e1e;
+  border: 1px solid #ffcc00;
+  border-left: 4px solid #ffcc00;
+  padding: 20px;
+  margin: 20px auto;
+  width: 80%;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.approval-header {
+  color: #ffcc00;
+  font-weight: bold;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+button {
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.btn-approve { background: #00ff88; color: #000; }
+.btn-approve:hover { background: #00cc6a; }
+
+.btn-reject { background: #ff4444; color: #fff; }
+.btn-reject:hover { background: #cc0000; }
+
+/* INPUT AREA */
+.input-container {
+  padding: 20px;
+  background-color: #1a1a1a;
+  border-top: 1px solid #333;
+  display: flex;
+  gap: 15px;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+input {
+  flex: 1;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background-color: #222;
+  color: white;
+  font-size: 1rem;
+}
+
+input:focus { outline: 2px solid #2563eb; border-color: transparent; }
+
+/* RIGHT SIDEBAR: LIVE INFO */
+.info-panel {
+  background-color: #1a1a1a;
+  border-left: 1px solid #333;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel-section {
+  margin-bottom: 30px;
+}
+
+.panel-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+  margin-bottom: 15px;
+  font-weight: 700;
+}
+
+.status-card {
+  background: #252525;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  border-left: 3px solid #00ff88;
+}
+
+.status-card.risk {
+  border-left-color: #ff4444;
+}
+
+/* LOGIN & SETTINGS */
+.login-container {
+  display: flex; justify-content: center; align-items: center; height: 100vh; background: #111;
+}
+.login-box {
+  background: #1e1e1e; padding: 40px; border-radius: 12px; width: 300px; display: flex; flex-direction: column; gap: 15px; text-align: center; border: 1px solid #333;
+}
+
+.settings-area { padding: 40px; background-color: #121212; flex: 1; overflow-y: auto; color: white; }
+.form-card { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-bottom: 30px; border: 1px solid #333; }
+.input-dark { width: 90%; padding: 12px; margin-bottom: 10px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 5px; }
+.emp-card { background: #252525; padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 3px solid #3b82f6; }

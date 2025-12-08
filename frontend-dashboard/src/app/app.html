@@ -1,0 +1,72 @@
+<div *ngIf="!isAuthenticated" class="login-container">
+  <div class="login-box">
+    <h1>🔒 AI Manager Login</h1>
+    <input [(ngModel)]="loginData.username" placeholder="Username" class="input-dark">
+    <input [(ngModel)]="loginData.password" placeholder="Password" type="password" class="input-dark">
+    <button class="btn-approve" (click)="onLogin()">Login</button>
+  </div>
+</div>
+
+<div *ngIf="isAuthenticated" class="main-layout">
+  <nav class="sidebar">
+    <div class="logo">⚡ AI Manager</div>
+    <div class="nav-item" [class.active]="currentView === 'chat'" (click)="switchView('chat')">💬 Chat</div>
+    <div class="nav-item" [class.active]="currentView === 'settings'" (click)="switchView('settings')">👥 Team & Roles</div>
+    <div class="nav-item logout" (click)="onLogout()">🚪 Logout</div>
+  </nav>
+
+  <main *ngIf="currentView === 'chat'" class="chat-area">
+    <div class="messages-container" #scrollMe>
+      <div *ngFor="let msg of chatHistory" 
+           [ngClass]="{'msg-user': msg.sender === 'You', 'msg-ai': msg.sender === 'AI Agent', 'msg-system': msg.sender === 'System'}"
+           class="message">
+        <strong>{{ msg.sender }}</strong><br>
+        <span style="white-space: pre-wrap;">{{ msg.text }}</span>
+      </div>
+      <div *ngIf="showApprovalButtons" class="approval-card">
+        <div class="approval-header">⚠️ APPROVAL REQUIRED</div>
+        <p>Plan generated. Proceed?</p>
+        <div class="approval-actions">
+          <button class="btn-approve" (click)="onApprove()">✅ Authorize</button>
+          <button class="btn-reject" (click)="onReject()">❌ Deny</button>
+        </div>
+      </div>
+      <div *ngIf="isLoading" class="msg-system">AI is thinking...</div>
+    </div>
+    <div class="input-container">
+      <input [(ngModel)]="userMessage" (keyup.enter)="sendMessage()" placeholder="Type command..." type="text">
+      <button class="btn-approve" (click)="sendMessage()">Send</button>
+    </div>
+  </main>
+
+  <main *ngIf="currentView === 'settings'" class="settings-area">
+    <h2>Manage Team</h2>
+    <div class="form-card">
+      <h3>Add Employee</h3>
+      <input [(ngModel)]="newEmp.name" placeholder="Name (e.g. David)" class="input-dark">
+      <input [(ngModel)]="newEmp.role" placeholder="Role (e.g. Mobile Dev)" class="input-dark">
+      <input [(ngModel)]="newEmp.skills" placeholder="Skills (e.g. flutter, ios)" class="input-dark">
+      
+      <input [(ngModel)]="newEmp.email" placeholder="Trello Email (e.g. david@company.com)" class="input-dark" style="border-color: #00ff88;">
+      
+      <button class="btn-approve" (click)="addEmployee()">+ Add to Brain</button>
+    </div>
+    <h3>Current Roster</h3>
+    <div class="employee-list">
+      <div *ngFor="let emp of employees" class="emp-card">
+        <strong>{{ emp.name }}</strong> - {{ emp.role }}
+        <br><small>Skills: {{ emp.skills.join(', ') }}</small>
+        <br><small *ngIf="emp.trello_id" style="color: #00ff88;">✅ Linked</small>
+        <small *ngIf="!emp.trello_id" style="color: #ff4444;">⚠️ Not Linked</small>
+      </div>
+    </div>
+  </main>
+
+  <aside class="info-panel">
+    <div class="panel-section">
+      <div class="panel-title">Recent Risks</div>
+      <div *ngFor="let risk of realRisks" class="status-card risk">{{ risk }}</div>
+      <div *ngIf="realRisks.length === 0" class="status-card" style="border-left: 3px solid #00ff88;">✅ No active risks</div>
+    </div>
+  </aside>
+</div>
