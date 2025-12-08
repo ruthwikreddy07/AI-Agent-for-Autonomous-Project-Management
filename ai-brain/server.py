@@ -14,7 +14,6 @@ from langchain_groq import ChatGroq
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
 from pinecone import Pinecone
-from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
 # --- IMPORT CALENDAR TOOL ---
@@ -53,6 +52,15 @@ TRELLO_LABELS = {
 }
 
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
+# ADD THIS:
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+
+def generate_embedding(text: str):
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    # We use "wait_for_model" so it doesn't fail if the model is cold
+    response = requests.post(HF_API_URL, headers=headers, json={"inputs": text, "options": {"wait_for_model": True}})
+    return response.json()
 
 DURATION_RULES = {"ui": 3, "design": 3, "api": 5, "database": 4, "test": 2, "deploy": 1, "fix": 1, "meeting": 0}
 
@@ -373,10 +381,22 @@ def send_slack_announcement(message: str):
 
 @tool
 def consult_project_memory(query: str):
-    """Searches project documentation in the vector database."""
-    vector = embedding_model.encode(query).tolist()
-    results = memory_index.query(vector=vector, top_k=3, include_metadata=True)
-    return "\n".join([f"- {m['metadata']['text']}" for m in results['matches']])
+    try:
+        # OLD: v = embedding_model.encode(query).tolist()
+        # NEW: Use the API function
+        v = generate_embedding(query)
+        
+        # Handle potential API quirks (sometimes it returns a list of lists)
+        if isinstance(v, list) and len(v) > 0 and isinstance(v[0], list):
+            v = v[0]
+            
+        if isinstance(v, dict) and "error" in v:
+            return f"Error from HuggingFace: {v['error']}"
+
+        r = memory_index.query(vector=v, top_k=3, include_metadata=True)
+        return "\n".join([f"- {m['metadata']['text']}" for m in r['matches']])
+    except Exception as e:
+        return f"Memory Error: {e}"
 
 @tool
 def schedule_meeting_tool(summary: str, description: str, start_time: str):
