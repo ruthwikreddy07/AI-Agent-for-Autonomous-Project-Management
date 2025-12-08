@@ -385,7 +385,10 @@ def create_task_in_trello(task_name: str, description: str = "", owner: str = "A
 
 @tool
 def send_slack_announcement(message: str):
-    """Sends a message to the team Slack channel."""
+    """
+    Sends a public message to the Slack channel. 
+    Use this to announce updates, risks, or completed tasks to the team.
+    """
     try:
         requests.post(N8N_SLACK_URL, json={"message": message})
         return "Success."
@@ -393,6 +396,10 @@ def send_slack_announcement(message: str):
 
 @tool
 def consult_project_memory(query: str):
+    """
+    Searches the project database for relevant information. 
+    Use this when the user asks about the budget, requirements, or past decisions.
+    """
     try:
         # OLD: v = embedding_model.encode(query).tolist()
         # NEW: Use the API function
@@ -479,7 +486,10 @@ def execute_project_plan(goal: str, tasks: str):
 
 @tool
 def check_project_status(dummy: str = ""):
-    """Checks Trello for overdue tasks and risks."""
+    """
+    Checks the Trello board for overdue tasks and risks.
+    Use this when the user asks for a status report or risk analysis.
+    """
     global current_risks
     try:
         response = requests.get(N8N_GET_CARDS_URL)
