@@ -93,13 +93,22 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 # Database
+client = None
+db = None
+users_collection = None
+employees_collection = None
+
 try:
-    client = MongoClient(MONGO_URI)
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client["ai_project_manager"]
     users_collection = db["users"]
     employees_collection = db["employees"]
+    # Test connection
+    client.admin.command('ping')
     print("✅ Connected to MongoDB")
-except Exception as e: print(f"❌ MongoDB Error: {e}")
+except Exception as e:
+    print(f"❌ MongoDB Error: {e}")
+    print(f"❌ MONGO_URI: {MONGO_URI[:20]}..." if MONGO_URI else "❌ MONGO_URI not set")
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -543,26 +552,61 @@ llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement,
 @app.post("/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     try:
-        if not users_collection:
-            raise HTTPException(status_code=500, detail="Database connection failed")
+        # Check database connection
+        if not users_collection or not db:
+            print("❌ Database not initialized")
+            raise HTTPException(
+                status_code=500, 
+                detail="Database connection failed. Please check server logs."
+            )
         
-        user = users_collection.find_one({"username": form_data.username})
-        if not user:
-            raise HTTPException(status_code=401, detail="Incorrect username or password")
+        # Test database connection
+        try:
+            db.command('ping')
+        except Exception as db_err:
+            print(f"❌ Database ping failed: {db_err}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database connection error: {str(db_err)}"
+            )
         
-        if not pwd_context.verify(form_data.password, user["password"]):
-            raise HTTPException(status_code=401, detail="Incorrect username or password")
-        
+        # Check SECRET_KEY
         if not SECRET_KEY or SECRET_KEY == "default_secret":
-            raise HTTPException(status_code=500, detail="Server configuration error")
+            print("❌ SECRET_KEY not configured properly")
+            raise HTTPException(
+                status_code=500,
+                detail="Server configuration error: SECRET_KEY not set"
+            )
         
+        # Find user
+        print(f"🔍 Attempting login for user: {form_data.username}")
+        user = users_collection.find_one({"username": form_data.username})
+        
+        if not user:
+            print(f"❌ User not found: {form_data.username}")
+            raise HTTPException(status_code=401, detail="Incorrect username or password")
+        
+        # Verify password
+        if not pwd_context.verify(form_data.password, user["password"]):
+            print(f"❌ Invalid password for user: {form_data.username}")
+            raise HTTPException(status_code=401, detail="Incorrect username or password")
+        
+        # Generate token
         token = jwt.encode({"sub": user["username"]}, SECRET_KEY, algorithm=ALGORITHM)
+        print(f"✅ Login successful for user: {form_data.username}")
         return {"access_token": token, "token_type": "bearer"}
+        
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
         print(f"❌ Login error: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        print(f"❌ Traceback: {error_trace}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 @app.post("/register")
 async def register(user: User):
@@ -681,4 +725,21 @@ def reject_plan():
 def get_risks(): return {"risks": current_risks}
 
 @app.get("/")
-def health_check(): return {"status": "AI is awake"}
+def health_check():
+    """Health check endpoint to verify server and database status"""
+    health_status = {
+        "status": "AI is awake",
+        "database": "connected" if (db and users_collection) else "disconnected",
+        "mongodb_uri_set": bool(MONGO_URI),
+        "secret_key_set": bool(SECRET_KEY and SECRET_KEY != "default_secret")
+    }
+    
+    # Test database connection
+    if db:
+        try:
+            db.command('ping')
+            health_status["database"] = "connected"
+        except Exception as e:
+            health_status["database"] = f"error: {str(e)}"
+    
+    return health_status
