@@ -553,7 +553,7 @@ llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement,
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     try:
         # Check database connection
-        if not users_collection or not db:
+        if users_collection is None or db is None:
             print("❌ Database not initialized")
             raise HTTPException(
                 status_code=500, 
@@ -729,13 +729,13 @@ def health_check():
     """Health check endpoint to verify server and database status"""
     health_status = {
         "status": "AI is awake",
-        "database": "connected" if (db and users_collection) else "disconnected",
+        "database": "connected" if (db is not None and users_collection is not None) else "disconnected",
         "mongodb_uri_set": bool(MONGO_URI),
         "secret_key_set": bool(SECRET_KEY and SECRET_KEY != "default_secret")
     }
     
     # Test database connection
-    if db:
+    if db is not None:
         try:
             db.command('ping')
             health_status["database"] = "connected"
