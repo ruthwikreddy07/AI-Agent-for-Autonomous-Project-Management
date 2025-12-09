@@ -1,6 +1,6 @@
 import os
 from pinecone import Pinecone
-from sentence_transformers import SentenceTransformer
+
 
 # ==========================================
 # 1. CONFIGURATION
