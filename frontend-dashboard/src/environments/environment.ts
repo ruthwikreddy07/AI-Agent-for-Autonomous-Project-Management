@@ -1,4 +1,4 @@
 export const environment = {
-  production: false,
-  apiUrl: 'http://127.0.0.1:10000'
+  production: true,
+  apiUrl: 'https://ai-manager-backend.onrender.com'  // <-- YOUR RENDER URL
 };
