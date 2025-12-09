@@ -1,8 +1,8 @@
 import { ApplicationConfig } from '@angular/core';
-import { provideHttpClient, withFetch } from '@angular/common/http';
+import { provideHttpClient } from '@angular/common/http'; // <--- THIS IS MISSING
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideHttpClient(withFetch())
+    provideHttpClient() // <--- Adds the ability to use API calls
   ]
 };
