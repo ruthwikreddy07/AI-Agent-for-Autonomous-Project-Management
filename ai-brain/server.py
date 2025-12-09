@@ -3,8 +3,9 @@ import json
 import requests
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -65,16 +66,32 @@ def generate_embedding(text: str):
 DURATION_RULES = {"ui": 3, "design": 3, "api": 5, "database": 4, "test": 2, "deploy": 1, "fix": 1, "meeting": 0}
 
 app = FastAPI()
+
+# CORS Configuration - Must be added before routes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:4200",  # For local testing
-        "https://ai-agent-for-project-management.onrender.com"  # 👈 YOUR FRONTEND URL
+        "http://localhost:4200",  # Angular dev server
+        "https://ai-agent-for-project-management.onrender.com",  # 👈 YOUR FRONTEND URL
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Global exception handler to ensure CORS headers are always included
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"❌ Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": "https://ai-agent-for-project-management.onrender.com",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
 # Database
 try:
     client = MongoClient(MONGO_URI)
@@ -525,11 +542,27 @@ llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement,
 # ==========================================
 @app.post("/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = users_collection.find_one({"username": form_data.username})
-    if not user or not pwd_context.verify(form_data.password, user["password"]):
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-    token = jwt.encode({"sub": user["username"]}, SECRET_KEY, algorithm=ALGORITHM)
-    return {"access_token": token, "token_type": "bearer"}
+    try:
+        if not users_collection:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        user = users_collection.find_one({"username": form_data.username})
+        if not user:
+            raise HTTPException(status_code=401, detail="Incorrect username or password")
+        
+        if not pwd_context.verify(form_data.password, user["password"]):
+            raise HTTPException(status_code=401, detail="Incorrect username or password")
+        
+        if not SECRET_KEY or SECRET_KEY == "default_secret":
+            raise HTTPException(status_code=500, detail="Server configuration error")
+        
+        token = jwt.encode({"sub": user["username"]}, SECRET_KEY, algorithm=ALGORITHM)
+        return {"access_token": token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Login error: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/register")
 async def register(user: User):
