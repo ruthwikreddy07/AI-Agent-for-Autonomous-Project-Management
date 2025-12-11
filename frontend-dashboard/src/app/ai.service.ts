@@ -51,8 +51,12 @@ export class AiService {
   getEmployees(): Observable<any[]> { return this.http.get<any[]>(`${this.apiUrl}/employees`); }
   
   // UPDATED: Accepts EMAIL
-  addEmployee(name: string, role: string, skills: string, email: string): Observable<any> {
-    const skillList = skills.split(',').map(s => s.trim());
-    return this.http.post<any>(`${this.apiUrl}/employees`, { name, role, skills: skillList, email });
+  addEmployee(name: string, role: string, skills: string[], email: string): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/employees`, { name, role, skills, email });
+  }
+  // --- ADD THIS NEW METHOD ---
+  register(username: string, password: string): Observable<any> {
+    // Sends username/password to the Python /register endpoint
+    return this.http.post(`${this.apiUrl}/register`, { username, password });
   }
 }

@@ -1,72 +1,125 @@
 <div *ngIf="!isAuthenticated" class="login-container">
-  <div class="login-box">
-    <h1>🔒 AI Manager Login</h1>
-    <input [(ngModel)]="loginData.username" placeholder="Username" class="input-dark">
-    <input [(ngModel)]="loginData.password" placeholder="Password" type="password" class="input-dark">
-    <button class="btn-approve" (click)="onLogin()">Login</button>
-  </div>
+  <form class="form">
+    <p id="heading">{{ isLoginMode ? 'AI Manager Login' : 'Create Account' }}</p>
+    
+    <div class="field">
+      <svg class="input-icon" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M13.106 7.222c0-2.967-2.249-5.032-5.482-5.032-3.35 0-5.646 2.318-5.646 5.702 0 3.493 2.235 5.708 5.762 5.708.862 0 1.689-.123 2.304-.335v-.862c-.43.199-1.354.328-2.29.328-2.926 0-4.813-1.88-4.813-4.798 0-2.844 1.921-4.881 4.594-4.881 2.735 0 4.608 1.688 4.608 4.156 0 1.682-.554 2.769-1.416 2.769-.492 0-.772-.28-.772-.76V5.206H8.923v.834h-.11c-.266-.595-.881-.964-1.6-.964-1.4 0-2.378 1.162-2.378 2.823 0 1.737.957 2.906 2.379 2.906.8 0 1.415-.39 1.709-1.087h.11c.081.67.703 1.148 1.503 1.148 1.572 0 2.57-1.415 2.57-3.643zm-7.177.704c0-1.197.54-1.907 1.456-1.907.93 0 1.524.738 1.524 1.907S8.308 9.84 7.371 9.84c-.895 0-1.442-.725-1.442-1.914z"></path>
+      </svg>
+      <input [(ngModel)]="loginData.username" name="username" class="input-field" placeholder="Username" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <svg class="input-icon" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"></path>
+      </svg>
+      <input [(ngModel)]="loginData.password" name="password" class="input-field" placeholder="Password" type="password">
+    </div>
+
+    <div class="btn">
+      <button class="button1" (click)="onAuthAction()">
+        {{ isLoginMode ? 'Login' : 'Create Account' }}
+      </button>
+      
+      <button class="button2" (click)="toggleAuthMode()">
+        {{ isLoginMode ? 'Sign Up' : 'Back to Login' }}
+      </button>
+    </div>
+  </form>
 </div>
 
 <div *ngIf="isAuthenticated" class="main-layout">
+  
   <nav class="sidebar">
-    <div class="logo">⚡ AI Manager</div>
-    <div class="nav-item" [class.active]="currentView === 'chat'" (click)="switchView('chat')">💬 Chat</div>
-    <div class="nav-item" [class.active]="currentView === 'settings'" (click)="switchView('settings')">👥 Team & Roles</div>
-    <div class="nav-item logout" (click)="onLogout()">🚪 Logout</div>
+    <div class="logo">⚡ <span>AI Manager</span></div>
+    <div class="nav-item" [class.active]="currentView === 'chat'" (click)="switchView('chat')">
+      💬 Project Chat
+    </div>
+    <div class="nav-item" [class.active]="currentView === 'settings'" (click)="switchView('settings')">
+      👥 Team & Roles
+    </div>
+    <div class="nav-item logout" (click)="onLogout()">
+      🚪 Logout
+    </div>
   </nav>
 
   <main *ngIf="currentView === 'chat'" class="chat-area">
-    <div class="messages-container" #scrollMe>
-      <div *ngFor="let msg of chatHistory" 
-           [ngClass]="{'msg-user': msg.sender === 'You', 'msg-ai': msg.sender === 'AI Agent', 'msg-system': msg.sender === 'System'}"
-           class="message">
-        <strong>{{ msg.sender }}</strong><br>
-        <span style="white-space: pre-wrap;">{{ msg.text }}</span>
+    <div class="chat-header">
+      <div class="chat-title">
+        <h2>Project Workspace</h2>
+        <small>● {{employees.length}} Active Members</small>
       </div>
+    </div>
+
+    <div class="messages-container" #scrollMe>
+      <ng-container *ngFor="let msg of chatHistory">
+        <div *ngIf="msg.sender === 'You'" class="message-wrapper user">
+          <div class="sender-name">You</div>
+          <div class="message-bubble">{{ msg.text }}</div>
+        </div>
+        
+        <div *ngIf="msg.sender === 'AI Agent'" class="message-wrapper ai">
+          <div class="sender-name">AI Assistant</div>
+          <div class="message-bubble" [innerHTML]="formatText(msg.text)"></div>
+        </div>
+
+        <div *ngIf="msg.sender === 'System'" style="align-self: center; margin: 10px 0;">
+          <span style="background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; color: #888;">{{ msg.text }}</span>
+        </div>
+      </ng-container>
+
+      <div *ngIf="isLoading" class="message-wrapper ai">
+        <div class="message-bubble" style="font-style: italic; color: #888;">Thinking...</div>
+      </div>
+
       <div *ngIf="showApprovalButtons" class="approval-card">
         <div class="approval-header">⚠️ APPROVAL REQUIRED</div>
-        <p>Plan generated. Proceed?</p>
+        <p style="margin: 0 0 15px 0; color: #ccc;">Plan generated. Do you want to proceed with execution?</p>
         <div class="approval-actions">
           <button class="btn-approve" (click)="onApprove()">✅ Authorize</button>
           <button class="btn-reject" (click)="onReject()">❌ Deny</button>
         </div>
       </div>
-      <div *ngIf="isLoading" class="msg-system">AI is thinking...</div>
     </div>
-    <div class="input-container">
-      <input [(ngModel)]="userMessage" (keyup.enter)="sendMessage()" placeholder="Type command..." type="text">
-      <button class="btn-approve" (click)="sendMessage()">Send</button>
+
+    <div class="input-area">
+      <input [(ngModel)]="userMessage" (keyup.enter)="sendMessage()" class="chat-input" placeholder="Type a command..." type="text">
+      <button class="send-btn" (click)="sendMessage()">➤</button>
     </div>
   </main>
 
-  <main *ngIf="currentView === 'settings'" class="settings-area">
-    <h2>Manage Team</h2>
-    <div class="form-card">
-      <h3>Add Employee</h3>
-      <input [(ngModel)]="newEmp.name" placeholder="Name (e.g. David)" class="input-dark">
-      <input [(ngModel)]="newEmp.role" placeholder="Role (e.g. Mobile Dev)" class="input-dark">
-      <input [(ngModel)]="newEmp.skills" placeholder="Skills (e.g. flutter, ios)" class="input-dark">
-      
-      <input [(ngModel)]="newEmp.email" placeholder="Trello Email (e.g. david@company.com)" class="input-dark" style="border-color: #00ff88;">
-      
-      <button class="btn-approve" (click)="addEmployee()">+ Add to Brain</button>
+  <main *ngIf="currentView === 'settings'" class="settings-container">
+    <div class="card">
+      <h3>Add New Team Member</h3>
+      <div style="display: grid; gap: 15px; grid-template-columns: 1fr 1fr;">
+        <div class="field"><input [(ngModel)]="newEmp.name" class="input-field" placeholder="Name"></div>
+        <div class="field"><input [(ngModel)]="newEmp.role" class="input-field" placeholder="Role"></div>
+        <div class="field"><input [(ngModel)]="newEmp.skills" class="input-field" placeholder="Skills"></div>
+        <div class="field"><input [(ngModel)]="newEmp.email" class="input-field" placeholder="Email"></div>
+      </div>
+      <button class="button1" style="width: 100%; margin-top: 20px;" (click)="addEmployee()">Add Member</button>
     </div>
-    <h3>Current Roster</h3>
-    <div class="employee-list">
+
+    <h3 style="color: #888; margin-bottom: 20px;">Current Roster</h3>
+    <div class="emp-grid">
       <div *ngFor="let emp of employees" class="emp-card">
-        <strong>{{ emp.name }}</strong> - {{ emp.role }}
-        <br><small>Skills: {{ emp.skills.join(', ') }}</small>
-        <br><small *ngIf="emp.trello_id" style="color: #00ff88;">✅ Linked</small>
-        <small *ngIf="!emp.trello_id" style="color: #ff4444;">⚠️ Not Linked</small>
+        <strong style="color: white; font-size: 1.1rem;">{{ emp.name }}</strong>
+        <div style="color: var(--accent-primary); font-size: 0.9rem; margin-bottom: 5px;">{{ emp.role }}</div>
+        <div style="color: #888; font-size: 0.85rem;">{{ emp.skills.join(', ') }}</div>
       </div>
     </div>
   </main>
 
   <aside class="info-panel">
-    <div class="panel-section">
-      <div class="panel-title">Recent Risks</div>
-      <div *ngFor="let risk of realRisks" class="status-card risk">{{ risk }}</div>
-      <div *ngIf="realRisks.length === 0" class="status-card" style="border-left: 3px solid #00ff88;">✅ No active risks</div>
+    <div class="panel-title">System Health</div>
+    <div class="safe-card">
+      <span>●</span> All Systems Operational
+    </div>
+
+    <div class="panel-title" style="margin-top: 30px;">Active Risks</div>
+    <div *ngIf="realRisks.length === 0" style="color: #666; font-size: 0.9rem;">No active risks detected.</div>
+    <div *ngFor="let risk of realRisks" class="risk-card">
+      {{ risk }}
     </div>
   </aside>
 </div>
