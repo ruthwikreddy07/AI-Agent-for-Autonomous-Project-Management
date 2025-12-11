@@ -309,3 +309,47 @@
 ::-webkit-scrollbar-track { background: var(--bg-app); }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #444; }
+/* --- FIXED LOGOUT BUTTON (Text Always Visible) --- */
+.logout-btn {
+  margin-top: auto; /* Pushes to bottom of sidebar */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 20px;
+  border: 1px solid rgba(239, 68, 68, 0.3); /* Subtle Red Border */
+  background-color: rgba(239, 68, 68, 0.1); /* Dark Transparent Red */
+  color: #ef4444; /* Red Text */
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+/* Hover State: Solid Red */
+.logout-btn:hover {
+  background-color: #ef4444;
+  color: white;
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); /* Red Glow */
+  transform: translateY(-2px);
+}
+
+/* Icon Styling */
+.icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logout-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor; /* Icon matches text color automatically */
+  transition: transform 0.2s;
+}
+
+/* Small nudge animation on hover */
+.logout-btn:hover .logout-icon {
+  transform: translateX(3px);
+}
