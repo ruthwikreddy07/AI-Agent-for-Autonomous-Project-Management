@@ -2,6 +2,7 @@
 import os
 import json
 import requests
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Depends, Request
@@ -324,13 +325,12 @@ refresh_system_prompt()
 
 def internal_create_trello(name, desc, owner, start_hour=10):
     due_date = estimate_due_date(name)
-    emp_data = {}
+    member_id = get_trello_id_from_db(owner)
+    emp_email = "" 
     try:
-        emp_data = employees_collection.find_one({"name": {"$regex": f"^{owner}$", "$options": "i"}}) or {}
-    except:
-        emp_data = {}
-    member_id = emp_data.get("trello_id", "") if emp_data else ""
-    emp_email = emp_data.get("email", "") if emp_data else ""
+        emp = employees_collection.find_one({"name": {"$regex": f"^{owner}$", "$options": "i"}})
+        if emp: emp_email = emp.get("email", "")
+    except: pass
 
     if not member_id and owner != "Unassigned":
         name = f"[{owner}] {name}"
@@ -340,67 +340,91 @@ def internal_create_trello(name, desc, owner, start_hour=10):
     name_lower = name.lower()
     if "bug" in name_lower or "fix" in name_lower:
         label_id = TRELLO_LABELS.get("bug", "")
-        if any(x in name_lower for x in ("critical", "urgent", "crash")):
-            is_urgent = True
+        if any(x in name_lower for x in ("critical", "urgent", "crash")): is_urgent = True
     elif "feature" in name_lower:
         label_id = TRELLO_LABELS.get("feature", "")
 
     full_desc = f"👤 **ASSIGNED TO:** {owner}\n\n{desc}"
-    payload = {
-        "task_name": name,
-        "description": full_desc,
-        "due_date": due_date,
-        "member_id": member_id,
-        "label_id": label_id,
-    }
+    payload = {"task_name": name, "description": full_desc, "due_date": due_date, "member_id": member_id, "label_id": label_id}
 
     trello_success = False
     try:
         resp = requests.post(N8N_TRELLO_URL, json=payload, timeout=10)
-        if resp.status_code == 200:
-            trello_success = True
+        if resp.status_code == 200: trello_success = True
+        else: print(f"❌ Trello Failed: {resp.text}", flush=True)
     except Exception as e:
-        print("❌ Trello/API error:", e)
+        print(f"❌ Trello API Error: {e}", flush=True)
 
     calendar_msg = ""
+    
+    # Only proceed if Trello card created
     if trello_success:
+        due_dt = datetime.fromisoformat(due_date)
+        focus_start = (due_dt - timedelta(days=1)).replace(hour=start_hour, minute=0, second=0, microsecond=0)
+        focus_title = f"⚡ Focus Time: {name}"
+        
+        # --- 1. GOOGLE CALENDAR (Independent Block) ---
+        clean_link = "Check Calendar"
+        actual_time = "TBD"
         try:
-            due_dt = datetime.fromisoformat(due_date)
-            focus_start = (due_dt - timedelta(days=1)).replace(hour=start_hour, minute=0, second=0, microsecond=0)
-            focus_title = f"⚡ Focus Time: {name}"
             result = create_meeting(focus_title, f"Work on Trello Card: {name}", focus_start.isoformat(), is_video_call=False)
-            actual_time = focus_start.strftime('%A at %I:%M %p')
-            if "(Booked at " in str(result):
-                booked_time = str(result).split("(Booked at ")[1].replace(")", "")
-                actual_time = f"{focus_start.strftime('%A')} at {booked_time}"
-            calendar_msg = f" (📅 {actual_time})"
+            
             if "Success" in str(result):
-                try:
-                    clean_link = str(result).split(" (Booked")[0].replace("Success! Link: ", "").strip()
-                except:
-                    clean_link = str(result)
-                slack_msg = (
-                    f"📅 *AUTO-SCHEDULED:* {focus_title}\n"
-                    f"👤 *Assigned To:* {owner}\n"
-                    f"⏰ *Focus Time:* {actual_time}\n"
-                    f"🎯 *Deadline:* {due_dt.strftime('%Y-%m-%d')}\n"
-                    f"🔗 *Calendar Link:* {clean_link}"
-                )
-                try:
-                    requests.post(N8N_SLACK_URL, json={"message": slack_msg}, timeout=5)
-                except:
-                    pass
-        except Exception as e:
-            print("Auto-schedule failed:", e)
+                # Try to clean link safely
+                try: clean_link = str(result).split(" (Booked")[0].replace("Success! Link: ", "").strip()
+                except: clean_link = str(result)
 
-        # urgent email alert
+                actual_time = focus_start.strftime('%A at %I:%M %p')
+                if "(Booked at " in str(result):
+                    try: 
+                        booked_time = str(result).split("(Booked at ")[1].replace(")", "")
+                        actual_time = f"{focus_start.strftime('%A')} at {booked_time}"
+                    except: pass
+                calendar_msg = f" (📅 {actual_time})"
+            else:
+                print(f"⚠️ Calendar Warning: {result}", flush=True)
+        except Exception as e:
+            print(f"⚠️ Calendar Failed: {e}", flush=True)
+
+        # --- 2. SLACK NOTIFICATION (Runs Separately) ---
+        try:
+            # Extract Budget from Description
+            budget_line = ""
+            if "💰" in desc:
+                for line in desc.split('\n'):
+                    if "💰" in line:
+                        budget_line = f"\n{line}" 
+                        break
+
+            slack_msg = (
+                f"📅 *AUTO-SCHEDULED:* {focus_title}\n"
+                f"👤 *Assigned To:* {owner}\n"
+                f"⏰ *Focus Time:* {actual_time}\n"
+                f"🎯 *Deadline:* {due_dt.strftime('%Y-%m-%d')}"
+                f"{budget_line}\n"
+                f"🔗 *Calendar Link:* {clean_link}"
+            )
+            
+            print(f"📤 Sending Slack for {name}...", flush=True)
+            # Increased timeout to 10s to prevent early cutoffs
+            requests.post(N8N_SLACK_URL, json={"message": slack_msg}, timeout=10)
+            
+            # Anti-flood delay (Important!)
+            print("⏳ Waiting 2s...", flush=True)
+            time.sleep(2) 
+            
+        except Exception as e:
+            print(f"❌ Slack Logic Error: {e}", flush=True)
+
+        # --- 3. URGENT ALERT ---
         if is_urgent and emp_email and N8N_ALERT_URL:
             try:
                 alert_payload = {"task_name": name, "owner_name": owner, "email": emp_email}
-                email_resp = requests.post(N8N_ALERT_URL, json=alert_payload, timeout=5)
+                requests.post(N8N_ALERT_URL, json=alert_payload, timeout=5)
                 calendar_msg += " (🚨 Urgent Email Sent!)"
             except Exception as e:
-                print("Urgent alert failed:", e)
+                print(f"Urgent alert failed: {e}", flush=True)
+
     return trello_success, calendar_msg
 
 @tool
@@ -621,12 +645,14 @@ def chat_endpoint(req: UserRequest):
                     follow = llm_with_tools.invoke(chat_history)
                     final = follow.content
                     # handle nested plan from memory
-                    if follow.tool_calls and follow.tool_calls[0]["name"] == "execute_project_plan":
-                        execute_project_plan.invoke(follow.tool_calls[0]["args"])
-                        if pending_plan:
-                            preview_lines = [f"• {t.get('name')} → {t.get('owner')}" for t in pending_plan["tasks"]]
-                            final = f"Plan from memory:\n\n" + "\n".join(preview_lines) + "\n\nProceed?"
-                            approval = True
+                    if follow.tool_calls:
+                        for tc_follow in follow.tool_calls:
+                            if tc_follow["name"] == "execute_project_plan":
+                                execute_project_plan.invoke(tc_follow["args"])
+                                if pending_plan:
+                                    preview = "\n".join([f"• {t['name']} → {t['owner']}" for t in pending_plan["tasks"]])
+                                    final = f"Based on our records, I drafted a plan:\n\n{preview}\n\nProceed?"
+                                    approval = True
 
     chat_history.append(response)
     return {"reply": final, "approval_required": approval}
