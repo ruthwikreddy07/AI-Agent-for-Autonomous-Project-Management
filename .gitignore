@@ -1,6 +1,4 @@
 # Secrets (Matches in any folder)
-token.json
-credentials.json
 req.txt
 .env
 
