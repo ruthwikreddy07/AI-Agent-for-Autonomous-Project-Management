@@ -242,6 +242,10 @@ You are an Intelligent AI Project Manager.
     - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array.
     - Each item MUST be: {{ "name": "Task Title", "desc": "Short description", "owner": "Role Name" }}
     - "tool_cost" is optional: Estimate price of tools/software/vendors (e.g., 50 for a license).
+    - Argument 'goal': Short description of the project.
+    - Argument 'budget': Extract the budget amount from the user's prompt (e.g., if user says "$500" or "500 dollars", pass 500). If no budget is mentioned, pass 0.
+    - Argument 'tasks': A valid JSON string array of tasks.
+    - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array
     - Every task MUST include:
      - title
      - assigned_to
@@ -488,9 +492,9 @@ def schedule_meeting_tool(summary: str, description: str, start_time: str):
     return result
 
 @tool
-def execute_project_plan(goal: str, tasks: str):
-    """Generates a multi-step plan. Tasks must be a JSON string."""
-    global pending_plan,current_budget_warning
+def execute_project_plan(goal: str, tasks: str, budget: float = 0):
+    """Generates a multi-step plan. Tasks must be a JSON string. Budget is the max limit in dollars."""
+    global pending_plan, current_budget_warning
     try:
         print(f"🧐 DEBUG RAW AI INPUT: {tasks}")
         raw_data = json.loads(tasks)
@@ -502,11 +506,7 @@ def execute_project_plan(goal: str, tasks: str):
         clean_tasks = []
         total_project_cost = 0
 
-        target_budget = 0
-        import re
-        budget_match = re.search(r'\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)', goal)
-        if budget_match:
-            target_budget = float(budget_match.group(1).replace(',', ''))
+        target_budget = budget
 
         for t in raw_data:
             if isinstance(t, str):
