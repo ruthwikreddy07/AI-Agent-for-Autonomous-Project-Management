@@ -134,6 +134,7 @@ class Employee(BaseModel):
     skills: List[str]
     email: str
     trello_id: Optional[str] = ""
+    rate: int = 50
 
 class User(BaseModel):
     username: str
@@ -220,6 +221,7 @@ def estimate_due_date(task_name: str) -> str:
 chat_history = []
 pending_plan = None
 current_risks = []
+current_budget_warning = ""
 def refresh_system_prompt():
     global chat_history
     roster = get_dynamic_roster()
@@ -239,6 +241,7 @@ You are an Intelligent AI Project Manager.
     - Trigger words: "Build", "Create", "Launch", "Develop", "Plan".
     - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array.
     - Each item MUST be: {{ "name": "Task Title", "desc": "Short description", "owner": "Role Name" }}
+    - "tool_cost" is optional: Estimate price of tools/software/vendors (e.g., 50 for a license).
     - Every task MUST include:
      - title
      - assigned_to
@@ -487,7 +490,7 @@ def schedule_meeting_tool(summary: str, description: str, start_time: str):
 @tool
 def execute_project_plan(goal: str, tasks: str):
     """Generates a multi-step plan. Tasks must be a JSON string."""
-    global pending_plan
+    global pending_plan,current_budget_warning
     try:
         print(f"🧐 DEBUG RAW AI INPUT: {tasks}")
         raw_data = json.loads(tasks)
@@ -497,6 +500,14 @@ def execute_project_plan(goal: str, tasks: str):
             return "Error: AI returned invalid JSON structure."
 
         clean_tasks = []
+        total_project_cost = 0
+
+        target_budget = 0
+        import re
+        budget_match = re.search(r'\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)', goal)
+        if budget_match:
+            target_budget = float(budget_match.group(1).replace(',', ''))
+
         for t in raw_data:
             if isinstance(t, str):
                 t = {"name": t, "desc": "Auto-generated task", "owner": "Unassigned"}
@@ -511,11 +522,68 @@ def execute_project_plan(goal: str, tasks: str):
                 owner = auto_assign_owner(name, desc)
             if owner == "Unassigned":
                 owner = get_default_owner()
+            # --- COST CALCULATION ---
+            # A. Time Est
+            days = 2
+            for k, v in DURATION_RULES.items():
+                if k in name.lower(): days = max(days, v)
+            
+            # B. Rate Est
+            emp_rate = 50
+            try:
+                if employees_collection:
+                    emp_data = employees_collection.find_one({"name": {"$regex": f"^{owner}$", "$options": "i"}})
+                    if emp_data: emp_rate = emp_data.get("rate", 50)
+            except: pass
+            
+            # C. Resource/Tool Cost (from AI)
+            tool_cost = t.get("tool_cost", 0)
+            
+            # D. Total
+            personnel_cost = days * 8 * emp_rate
+            task_total = personnel_cost + tool_cost
+            total_project_cost += task_total
 
-            t_clean = {"name": name, "desc": desc, "owner": owner}
-            clean_tasks.append(t_clean)
+            # E. Save to Description
+            cost_details = f"💰 **Cost:** ${task_total} (Labor: ${personnel_cost} + Tools: ${tool_cost})"
+            desc = f"{desc}\n\n{cost_details}\n⏱ Est: {days} days @ ${emp_rate}/hr"
+            
+            clean_tasks.append({"name": name, "desc": desc, "owner": owner})
 
-        pending_plan = {"goal": goal, "tasks": clean_tasks}
+        # --- RISK ANALYSIS ---
+        # Default styling (No budget limit set)
+        budget_status_msg = f"💵 **Total Project Cost:** ${total_project_cost}"
+        current_budget_warning = "" # Reset warning
+
+        # If user set a limit, check it and change the styling
+        if target_budget > 0:
+            if total_project_cost > target_budget:
+                overrun = total_project_cost - target_budget
+                
+                # 🚨 RED ALERT STYLE
+                budget_status_msg = (
+                    f"🚨 **Total:** ${total_project_cost}\n"
+                    f"⚠️ **Over Budget by:** ${overrun}"
+                )
+                current_budget_warning = f"🚨 **BUDGET OVERRUN:** Plan exceeds limit by ${overrun}!"
+            
+            else:
+                remaining = target_budget - total_project_cost
+                
+                # ✅ GREEN SUCCESS STYLE
+                budget_status_msg = (
+                    f"✅ **Total:** ${total_project_cost}\n"
+                    f"💰 **Under Budget:** ${remaining} remaining"
+                )
+                current_budget_warning = "" 
+
+        # Save this pre-formatted message into the plan
+        pending_plan = {
+            "goal": goal, 
+            "tasks": clean_tasks, 
+            "budget_summary": budget_status_msg 
+        }
+        
         return "PLAN_STAGED"
     except Exception as e:
         print("❌ PLAN ERROR:", e)
@@ -523,30 +591,38 @@ def execute_project_plan(goal: str, tasks: str):
 
 @tool
 def check_project_status(dummy: str = ""):
-    """Checks Trello for overdue tasks and risks."""
-    global current_risks
+    """Checks Trello for overdue tasks AND active budget risks."""
+    global current_risks, current_budget_warning
     try:
-        response = requests.get(N8N_GET_CARDS_URL, timeout=10)
-        cards = response.json()
+        # 1. Fetch Trello Cards
         risks = []
-        today = datetime.now()
-        for c in cards:
-            if isinstance(c, dict) and "json" in c:
-                c = c["json"]
-            if c.get("due"):
-                try:
-                    d = datetime.fromisoformat(c["due"].replace("Z", "+00:00")).replace(tzinfo=None)
-                    if today > d:
-                        risks.append(f"⚠️ OVERDUE: '{c['name']}'")
-                except:
-                    pass
-        current_risks = risks
-        if not risks:
-            return "✅ ALL GOOD."
         try:
-            requests.post(N8N_SLACK_URL, json={"message": f"🚨 RISK REPORT:\n" + "\n".join(risks)}, timeout=5)
-        except:
-            pass
+            response = requests.get(N8N_GET_CARDS_URL, timeout=10)
+            if response.status_code == 200:
+                cards = response.json()
+                today = datetime.now()
+                for c in cards:
+                    if isinstance(c, dict) and "json" in c: c = c["json"]
+                    if c.get("due"):
+                        try:
+                            d = datetime.fromisoformat(c["due"].replace("Z", "+00:00")).replace(tzinfo=None)
+                            # ✅ FIX: Check if date is today or past (>= instead of >)
+                            if today.date() >= d.date():
+                                risks.append(f"⚠️ DUE/OVERDUE: '{c['name']}'")
+                        except: pass
+        except Exception as e:
+            print(f"⚠️ Trello Check Failed: {e}")
+
+        # 2. ADD BUDGET RISK (Priority #1)
+        if current_budget_warning:
+            risks.insert(0, current_budget_warning)
+
+        # 3. Save to Global Variable
+        current_risks = risks
+        
+        if not risks:
+            return "✅ ALL GOOD. No overdue tasks or budget issues."
+        
         return "Risks Found"
     except Exception as e:
         return f"Error: {e}"
@@ -614,8 +690,19 @@ def chat_endpoint(req: UserRequest):
                 if res == "PLAN_STAGED":
                     plan_staged = True
                     if pending_plan:
+                        # 1. Format Tasks
                         preview_lines = [f"• {t.get('name')} → {t.get('owner')}" for t in pending_plan["tasks"]]
-                        final = f"I have drafted a plan:\n\n" + "\n".join(preview_lines) + "\n\nProceed?"
+                        
+                        # 2. Get the Pre-Formatted Budget Info
+                        budget_info = pending_plan.get("budget_summary", "")
+
+                        # 3. Construct the Message
+                        final = (
+                            f"I have drafted a plan:\n"
+                            f"{budget_info}\n\n"  # <--- This will now be 🚨 or ✅ automatically
+                            f"{chr(10).join(preview_lines)}\n\n"
+                            f"Proceed?"
+                        )
                         approval = True
                     else:
                         final = "Plan generated. Proceed?"
@@ -691,6 +778,15 @@ def reject_plan():
 
 @app.get("/risks")
 def get_risks():
+    """
+    Force a refresh of the project status immediately 
+    so the Frontend gets live data on load.
+    """
+    # 1. Run the check logic explicitly!
+    # This updates the 'current_risks' global variable
+    check_project_status.invoke({"dummy": "refresh"})
+    
+    # 2. Return the freshly updated list
     return {"risks": current_risks}
 
 @app.get("/")

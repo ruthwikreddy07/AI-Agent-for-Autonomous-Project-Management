@@ -25,7 +25,8 @@ export class App implements OnInit, AfterViewChecked {
   employees: any[] = [];
   
   loginData = { username: '', password: '' };
-  newEmp = { name: '', role: '', skills: '', email: '' };
+  // Added 'rate' with a default of 50
+  newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
   
   isLoading: boolean = false;
   showApprovalButtons: boolean = false;
@@ -122,11 +123,33 @@ export class App implements OnInit, AfterViewChecked {
   loadEmployees() { this.aiService.getEmployees().subscribe(data => this.employees = data); }
 
   addEmployee() {
-    if (!this.newEmp.name || !this.newEmp.email) { alert('⚠️ Name and Email are required!'); return; }
-    const empData = { ...this.newEmp, skills: typeof this.newEmp.skills === 'string' ? this.newEmp.skills.split(',') : this.newEmp.skills };
-    
-    this.aiService.addEmployee(empData.name, empData.role, empData.skills, empData.email).subscribe({
-      next: (res) => { alert(res.msg); this.newEmp = { name: '', role: '', skills: '', email: '' }; this.loadEmployees(); },
+    if (!this.newEmp.name || !this.newEmp.email) {
+      alert('⚠️ Name and Email are required!');
+      return;
+    }
+
+    const empData = {
+      ...this.newEmp,
+      // Handle skills split safely
+      skills: typeof this.newEmp.skills === 'string' 
+        ? (this.newEmp.skills as string).split(',') 
+        : this.newEmp.skills
+    };
+
+    // We now pass 'this.newEmp.rate' as the last argument
+    this.aiService.addEmployee(
+      empData.name, 
+      empData.role, 
+      empData.skills, 
+      empData.email, 
+      empData.rate
+    ).subscribe({
+      next: (res) => {
+        alert(res.msg);
+        // Reset form (including rate reset to 50)
+        this.newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
+        this.loadEmployees();
+      },
       error: () => alert('Error adding employee')
     });
   }

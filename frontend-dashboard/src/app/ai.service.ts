@@ -51,8 +51,8 @@ export class AiService {
   getEmployees(): Observable<any[]> { return this.http.get<any[]>(`${this.apiUrl}/employees`); }
   
   // UPDATED: Accepts EMAIL
-  addEmployee(name: string, role: string, skills: string[], email: string): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}/employees`, { name, role, skills, email });
+  addEmployee(name: string, role: string, skills: string[], email: string,rate: number): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/employees`, { name, role, skills, email, rate });
   }
   // --- ADD THIS NEW METHOD ---
   register(username: string, password: string): Observable<any> {
