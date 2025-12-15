@@ -149,3 +149,60 @@ def create_meeting(summary, description, start_time_str, duration_minutes=60, is
 
     except Exception as e:
         return f"Failed: {str(e)}"
+def check_availability(start_time_str, duration_minutes=60):
+    """
+    Exposed helper for server.py to check if a slot is free.
+    """
+    service = get_calendar_service()
+    if not service: return False, "Calendar not connected"
+
+    try:
+        clean_time = start_time_str.replace("Z", "")
+        start_dt = datetime.datetime.fromisoformat(clean_time)
+        end_dt = start_dt + datetime.timedelta(minutes=duration_minutes)
+        
+        # We reuse the is_slot_free logic you already have
+        is_free = is_slot_free(service, start_dt, end_dt)
+        
+        if is_free:
+            return True, "Available"
+        else:
+            return False, "Busy"
+    except Exception as e:
+        return False, f"Error: {e}"
+
+def find_next_free_slot(start_time_str, duration_minutes=60, max_hours_ahead=8):
+    """
+    Finds the next available free slot.
+    """
+    service = get_calendar_service()
+    if not service: return False, None, "No Calendar", []
+    
+    try:
+        clean_time = start_time_str.replace("Z", "")
+        start_dt = datetime.datetime.fromisoformat(clean_time)
+        skipped_slots = []
+        
+        for i in range(1, max_hours_ahead + 1):
+            next_slot = start_dt + datetime.timedelta(hours=i)
+            
+            # Working hours logic (9 AM - 6 PM)
+            if 9 <= next_slot.hour < 18:
+                next_iso = next_slot.isoformat()
+                end_slot = next_slot + datetime.timedelta(minutes=duration_minutes)
+                
+                # Check this slot
+                if is_slot_free(service, next_slot, end_slot):
+                    readable = next_slot.strftime('%A at %I:%M %p')
+                    return True, next_iso, readable, skipped_slots
+                else:
+                    skipped_slots.append({
+                        "time": next_slot.strftime('%I:%M %p'),
+                        "conflict": "Busy"
+                    })
+                    
+        return False, None, "No slots found", skipped_slots
+
+    except Exception as e:
+        print(f"Find error: {e}")
+        return False, None, str(e), []

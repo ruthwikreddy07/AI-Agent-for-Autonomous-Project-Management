@@ -1,9 +1,10 @@
-# app.py  -- Combined Option A (HF embeddings, no sentence_transformers)
+# server.py  -- Combined Option A (HF embeddings, no sentence_transformers)
 import os
 import json
 import requests
-import time
-from datetime import datetime, timedelta
+import time as time_module
+from graphlib import TopologicalSorter
+from datetime import datetime, timedelta, time
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,16 +22,27 @@ from dotenv import load_dotenv
 
 # --- calendar_tool import (optional) ---
 try:
-    from calendar_tool import create_meeting
+    # Ensure check_availability and find_next_free_slot are exposed in your calendar_tool.py
+    from calendar_tool import create_meeting, check_availability,find_next_free_slot
 except ImportError:
     print("⚠️ Warning: calendar_tool.py not found. Scheduling will not work.")
     def create_meeting(*args, **kwargs): return "Error: calendar_tool.py missing"
+    def check_availability(*args, **kwargs): return False, "calendar_tool.py missing"
+    def find_next_free_slot(*args, **kwargs): return False, None, "calendar_tool.py missing", []
+    def find_next_free_slot(*args, **kwargs): return False, None, "calendar_tool.py missing"
 
 load_dotenv()
 
 # --------------------
 # CONFIG & SECRETS
 # --------------------
+# --------------------
+# 📅 CALENDAR CONFIG
+# --------------------
+COMPANY_HOLIDAYS = [
+    "2025-12-25", "2026-01-01", "2026-01-26" 
+]
+WEEKEND_DAYS = [5, 6]  # Saturday=5, Sunday=6
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_HOST = os.getenv("PINECONE_HOST")
@@ -153,6 +165,92 @@ llm = ChatGroq(model="llama-3.1-8b-instant")
 # --------------------
 # HELPERS
 # --------------------
+
+def calculate_smart_timeline(tasks):
+    """
+    Sorts tasks by dependency and calculates dates skipping weekends/holidays.
+    Updates the description with Blocked By and Timeline info.
+    """
+    # 1. Topological Sort
+    graph = {}
+    def clean(s): return s.lower().strip()
+    task_map = {clean(t["name"]): t for t in tasks}
+    
+    for t in tasks:
+        # Standardize Description Field (Fixes the missing text bug)
+        if "desc" not in t:
+            t["desc"] = t.get("description", "")
+        if t["desc"] is None:
+            t["desc"] = ""
+            
+        deps = t.get("depends_on", [])
+        valid_deps = {clean(d) for d in deps if clean(d) in task_map}
+        graph[clean(t["name"])] = valid_deps
+
+    try:
+        sorter = TopologicalSorter(graph)
+        ordered_clean_names = list(sorter.static_order())
+    except Exception as e:
+        print(f"⚠️ Cycle detected or sort error: {e}")
+        ordered_clean_names = [clean(t["name"]) for t in tasks] # Fallback
+
+    # 2. Date Calculation
+    schedule = []
+    completion_dates = {} # Key: Clean Name -> Value: End Date
+    project_start = datetime.now()
+
+    # Iterate through the SORTED clean names
+    for clean_name in ordered_clean_names:
+        task = task_map[clean_name]
+        
+        # Start Date Logic
+        my_clean_deps = [clean(d) for d in task.get("depends_on", [])]
+        dep_ends = [completion_dates[d] for d in my_clean_deps if d in completion_dates]
+        
+        if dep_ends:
+            start_date = max(dep_ends) + timedelta(days=1)
+        else:
+            start_date = project_start + timedelta(days=1)
+
+        # Duration Logic
+        days_needed = 2
+        for k, v in DURATION_RULES.items():
+            if k in task["name"].lower(): days_needed = max(days_needed, v)
+
+        # Calendar Logic (Skip Weekends)
+        while start_date.weekday() in WEEKEND_DAYS or start_date.strftime("%Y-%m-%d") in COMPANY_HOLIDAYS:
+            start_date += timedelta(days=1)
+
+        current_date = start_date
+        days_to_add = days_needed - 1  
+        
+        while days_to_add > 0:
+            current_date += timedelta(days=1)
+            if current_date.weekday() not in WEEKEND_DAYS and current_date.strftime("%Y-%m-%d") not in COMPANY_HOLIDAYS:
+                days_to_add -= 1
+        
+        while current_date.weekday() in WEEKEND_DAYS or current_date.strftime("%Y-%m-%d") in COMPANY_HOLIDAYS:
+            current_date += timedelta(days=1)
+        
+        # Save Data
+        completion_dates[clean_name] = current_date
+        task["start_date"] = start_date.strftime("%Y-%m-%d")
+        task["due_date"] = current_date.strftime("%Y-%m-%d")
+        task["duration"] = days_needed
+        
+        # --- 📝 FORCE WRITE TO DESCRIPTION ---
+        # This ensures the text is added even if the AI used 'description' instead of 'desc'
+        if task.get("depends_on"):
+            # Join the dependencies into a string
+            blocker_text = ', '.join(task['depends_on'])
+            task["desc"] += f"\n\n🛑 **Blocked By:** {blocker_text}"
+            
+        task["desc"] += f"\n📅 **Timeline:** {task['start_date']} ➝ {task['due_date']}"
+        
+        schedule.append(task)
+
+    return schedule
+
 def get_trello_id_by_email(email: str) -> str:
     if not TRELLO_API_KEY or not TRELLO_TOKEN:
         return ""
@@ -240,10 +338,16 @@ You are an Intelligent AI Project Manager.
     - Use this ONLY for COMPLEX requests.
     - Trigger words: "Build", "Create", "Launch", "Develop", "Plan".
     - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array.
-    - Each item MUST be: {{ "name": "Task Title", "desc": "Short description", "owner": "Role Name" }}
+    - Each item MUST be: {{ "name": "Task Title", "desc": "Short description", "owner": "Role Name", "depends_on": ["Task Name"] }}
+    - "depends_on": List of task names that must finish BEFORE this one starts.
+    - Example: "Build API" depends on ["Design Database"].
     - "tool_cost" is optional: Estimate price of tools/software/vendors (e.g., 50 for a license).
     - Argument 'goal': Short description of the project.
-    - Argument 'budget': Extract the budget amount from the user's prompt (e.g., if user says "$500" or "500 dollars", pass 500). If no budget is mentioned, pass 0.
+    - Argument 'budget': STRICTLY extract the dollar amount from the prompt.
+    - 🛑 IF NO CURRENCY AMOUNT IS MENTIONED: You MUST pass 0. 
+    - 🛑 DO NOT GUESS. DO NOT DEFAULT TO 1000.
+    - If unsure, pass 0.
+    - DO NOT GUESS. DO NOT ASSUME. Default is 0.
     - Argument 'tasks': A valid JSON string array of tasks.
     - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array
     - Every task MUST include:
@@ -251,6 +355,9 @@ You are an Intelligent AI Project Manager.
      - assigned_to
      - deadline
      - focus_time (1-hour slot)
+     - 🛑 DO NOT create separate tasks for "Create Trello Card". The system does this automatically.
+     - Only list the actual project work (e.g., "Design API", "Test Login").
+     - If the user does not explicitly mention a dollar amount (e.g. "$500"), you MUST pass 0 for 'budget'. Do not guess.
     - Requires human approval.
 
 2️⃣  **create_task_in_trello**
@@ -258,6 +365,18 @@ You are an Intelligent AI Project Manager.
 
 3️⃣  **schedule_meeting_tool**
     - Use when user says: "Schedule", "Book", "Set up meeting"
+    - 🛑 STEP 1: ALWAYS call with `action="check"` FIRST (never skip this step).
+    - 🛑 STEP 2: Process the tool response:
+      - If response says "✅ Available": Ask user "The time [TIME] is available. Would you like me to book it?"
+      - If response says "⚠️ BUSY": The tool has found a NEW free slot. Ask user "The requested time is busy. I found a free slot at [NEW TIME]. Shall we book that?"
+      - Both responses include instructions on what to do next - FOLLOW THEM.
+    - 🛑 STEP 3 (CRITICAL): 
+      - If the user says "YES" (or "book it", "sure", "ok") after you suggested a time:
+      - **YOU MUST CALL THE TOOL `schedule_meeting_tool`**.
+      - Arguments: `action="book"`, `start_time="THE_ISO_TIME_FROM_SYSTEM_NOTE"`.
+      - **DO NOT** use `send_slack_announcement` for this.
+      - **DO NOT** just reply with text.
+
 
 4️⃣  **check_project_status**
     - Use for project progress checks, risks, summaries
@@ -330,8 +449,11 @@ refresh_system_prompt()
 # TOOLS
 # --------------------
 
-def internal_create_trello(name, desc, owner, start_hour=10):
-    due_date = estimate_due_date(name)
+def internal_create_trello(name, desc, owner, start_hour=10,specific_due_date=None):
+    if specific_due_date:
+        due_date = specific_due_date
+    else:
+        due_date = estimate_due_date(name)
     member_id = get_trello_id_from_db(owner)
     emp_email = "" 
     try:
@@ -352,16 +474,21 @@ def internal_create_trello(name, desc, owner, start_hour=10):
         label_id = TRELLO_LABELS.get("feature", "")
 
     full_desc = f"👤 **ASSIGNED TO:** {owner}\n\n{desc}"
-    payload = {"task_name": name, "description": full_desc, "due_date": due_date, "member_id": member_id, "label_id": label_id}
+    payload = {"task_name": name, "description": full_desc,"desc": full_desc, "due_date": due_date, "member_id": member_id, "label_id": label_id}
 
     trello_success = False
-    try:
-        resp = requests.post(N8N_TRELLO_URL, json=payload, timeout=10)
-        if resp.status_code == 200: trello_success = True
-        else: print(f"❌ Trello Failed: {resp.text}", flush=True)
-    except Exception as e:
-        print(f"❌ Trello API Error: {e}", flush=True)
-
+    for attempt in range(3): # Try 3 times
+        try:
+            resp = requests.post(N8N_TRELLO_URL, json=payload, timeout=30)
+            if resp.status_code == 200: 
+                trello_success = True
+                break # Success! Exit the loop
+            else: 
+                print(f"⚠️ Trello Fail (Attempt {attempt+1}): {resp.text}", flush=True)
+        except Exception as e:
+            print(f"⚠️ Trello Error (Attempt {attempt+1}): {e}", flush=True)
+            time_module.sleep(2) # Wait 2 seconds before retrying
+            
     calendar_msg = ""
     
     # Only proceed if Trello card created
@@ -418,7 +545,7 @@ def internal_create_trello(name, desc, owner, start_hour=10):
             
             # Anti-flood delay (Important!)
             print("⏳ Waiting 2s...", flush=True)
-            time.sleep(2) 
+            time_module.sleep(2) 
             
         except Exception as e:
             print(f"❌ Slack Logic Error: {e}", flush=True)
@@ -468,6 +595,7 @@ def consult_project_memory(query: str):
     except Exception as e:
         return f"Memory Error: {e}"
 
+
 @tool
 def schedule_meeting_tool(summary: str, description: str, start_time: str):
     """
@@ -508,12 +636,17 @@ def execute_project_plan(goal: str, tasks: str, budget: float = 0):
 
         target_budget = budget
 
-        for t in raw_data:
+        scheduled_tasks = calculate_smart_timeline(raw_data)
+
+        # Now loop through the SMART list, not the raw list
+        for t in scheduled_tasks:
             if isinstance(t, str):
                 t = {"name": t, "desc": "Auto-generated task", "owner": "Unassigned"}
             # ensure name exists
             if "name" not in t:
                 t["name"] = t.get("task_name") or t.get("title") or t.get("action") or t.get("task") or "Task"
+            if "trello card" in t["name"].lower():
+                continue
             name = t.get("name")
             desc = t.get("desc") or t.get("description") or ""
             owner = t.get("owner") or t.get("assignee") or "Unassigned"
@@ -524,9 +657,9 @@ def execute_project_plan(goal: str, tasks: str, budget: float = 0):
                 owner = get_default_owner()
             # --- COST CALCULATION ---
             # A. Time Est
-            days = 2
-            for k, v in DURATION_RULES.items():
-                if k in name.lower(): days = max(days, v)
+            # --- COST CALCULATION ---
+            # Get the duration calculated by the Smart Timeline (default to 2 if missing)
+            days = t.get("duration", 2)
             
             # B. Rate Est
             emp_rate = 50
@@ -546,13 +679,23 @@ def execute_project_plan(goal: str, tasks: str, budget: float = 0):
 
             # E. Save to Description
             cost_details = f"💰 **Cost:** ${task_total} (Labor: ${personnel_cost} + Tools: ${tool_cost})"
+            timeline_info = ""
+
+            if "start_date" in t:
+                timeline_info = f"\n📅 **Timeline:** {t['start_date']} ➝ {t['due_date']}"
+            
             desc = f"{desc}\n\n{cost_details}\n⏱ Est: {days} days @ ${emp_rate}/hr"
             
-            clean_tasks.append({"name": name, "desc": desc, "owner": owner})
-
+            # ✅ THE FIX: Save the calculated dates into the pending plan
+            clean_tasks.append({
+                "name": name, 
+                "desc": desc, 
+                "owner": owner,
+                "due_date": t.get("due_date"), 
+                "start_date": t.get("start_date")
+            })
         # --- RISK ANALYSIS ---
         # Default styling (No budget limit set)
-        budget_status_msg = f"💵 **Total Project Cost:** ${total_project_cost}"
         current_budget_warning = "" # Reset warning
 
         # If user set a limit, check it and change the styling
@@ -576,6 +719,10 @@ def execute_project_plan(goal: str, tasks: str, budget: float = 0):
                     f"💰 **Under Budget:** ${remaining} remaining"
                 )
                 current_budget_warning = "" 
+        else:
+            # If no budget set, just show total neutral
+            budget_status_msg = f"💵 **Total Project Cost:** ${total_project_cost}"
+            current_budget_warning = ""
 
         # Save this pre-formatted message into the plan
         pending_plan = {
@@ -627,8 +774,77 @@ def check_project_status(dummy: str = ""):
     except Exception as e:
         return f"Error: {e}"
 
+@tool
+def heal_project_schedule(dummy: str = ""):
+    """Scans Trello. If a task is late, pushes dependent tasks forward."""
+    try:
+        cards = requests.get(N8N_GET_CARDS_URL).json()
+        task_status = {}
+        
+        # 1. Map current status
+        for c in cards:
+            if isinstance(c, dict) and "json" in c: c = c["json"] # Handle n8n formatting
+            # Logic: If late, effective end is Tomorrow. If on time, effective end is Due Date.
+            try:
+                due = datetime.fromisoformat(c["due"].replace("Z", ""))
+            except:
+                continue # Skip cards with no due date
+            if due < datetime.now(): 
+                effective_end = datetime.now() + timedelta(days=1)
+            else: 
+                effective_end = due
+            task_status[c["name"]] = effective_end
+
+        # 2. Fix Dependencies
+        updates = []
+        for c in cards:
+            if isinstance(c, dict) and "json" in c: c = c["json"]
+            if "Blocked By:" in c.get("desc", ""):
+                try:
+                    blocker = c["desc"].split("Blocked By: ")[1].split("\n")[0]
+                    
+                    if blocker in task_status:
+                        blocker_end = task_status[blocker]
+                        
+                        # Handle cases where 'start' might be missing in Trello card
+                        my_start_str = c.get("start")
+                        if my_start_str:
+                             my_start = datetime.fromisoformat(my_start_str.replace("Z", ""))
+                        else:
+                             # Fallback: Assume start is today if not set
+                             my_start = datetime.now() 
+                        
+                        if my_start <= blocker_end:
+                            # PUSH DATE
+                            new_due = blocker_end + timedelta(days=2)
+                            
+                            # --- FIX: ADD AUTHENTICATION HERE ---
+                            query_params = {
+                                "key": TRELLO_API_KEY,
+                                "token": TRELLO_TOKEN,
+                                "due": new_due.isoformat()
+                            }
+                            
+                            # Update Trello
+                            resp = requests.put(
+                                f"https://api.trello.com/1/cards/{c['id']}", 
+                                params=query_params # Pass params correctly
+                            )
+                            
+                            if resp.status_code == 200:
+                                updates.append(f"🛠️ Healed: Moved '{c['name']}' to {new_due.date()} because '{blocker}' is late.")
+                            else:
+                                updates.append(f"❌ Failed to update '{c['name']}': {resp.text}")
+                except Exception as inner_e:
+                    print(f"Error processing card {c.get('name')}: {inner_e}")
+                    continue
+        
+        return "\n".join(updates) if updates else "Schedule Healthy (No conflicts found)."
+    except Exception as e:
+        return f"Error healing: {e}"
+
 # Bind tools
-llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool])
+llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool,heal_project_schedule])
 
 # --------------------
 # ENDPOINTS
@@ -725,6 +941,8 @@ def chat_endpoint(req: UserRequest):
                     final = check_project_status.invoke(args)
                 elif fn == "schedule_meeting_tool":
                     final = schedule_meeting_tool.invoke(args)
+                elif fn == "heal_project_schedule":
+                    final = heal_project_schedule.invoke(args)
                 elif fn == "consult_project_memory":
                     res = consult_project_memory.invoke(args)
                     chat_history.append(response)
@@ -755,39 +973,49 @@ def approve_plan():
         name = t.get("name", "Task")
         owner = t.get("owner", "Unassigned")
         desc = t.get("desc", "")
-        success, cal_msg = internal_create_trello(name, desc, owner, start_hour=current_hour)
+        smart_date = t.get("due_date")
+        success, cal_msg = internal_create_trello(
+            name, desc, owner, 
+            start_hour=current_hour, 
+            specific_due_date=smart_date 
+        )
         status_text = f"Created: {name}"
         if cal_msg:
             status_text += " (+Calendar)"
         results.append(status_text)
         current_hour += 2
-        if current_hour > 17:
+        if current_hour > 18:
             current_hour = 9
+        print(f"⏳ Waiting 5s for n8n to finish processing '{name}'...", flush=True)
+        time_module.sleep(5)
+    budget_info = pending_plan.get("budget_summary", "No Budget Info")
     try:
-        requests.post(N8N_SLACK_URL, json={"message": f"✅ APPROVED: {pending_plan['goal']}\n" + "\n".join(results)}, timeout=5)
+        final_slack_msg = (
+            f"✅ *APPROVED:* {pending_plan['goal']}\n"
+            f"{budget_info}\n"  # <--- 🔥 ADDED THIS LINE
+            f"----------------------------------\n"
+            f"{chr(10).join(results)}"
+        )
+        requests.post(N8N_SLACK_URL, json={"message": final_slack_msg}, timeout=5)
     except:
         pass
+
     pending_plan = None
     return {"status": "Executed", "details": "\n".join(results)}
 
 @app.post("/reject")
 def reject_plan():
-    global pending_plan
+    global pending_plan, current_budget_warning  # <--- Access the warning variable
+    
+    # 1. Clear the Plan
     pending_plan = None
+    
+    # 2. Clear the Risk Warning (This fixes your bug)
+    current_budget_warning = "" 
+    
     return {"status": "Cancelled"}
 
-@app.get("/risks")
-def get_risks():
-    """
-    Force a refresh of the project status immediately 
-    so the Frontend gets live data on load.
-    """
-    # 1. Run the check logic explicitly!
-    # This updates the 'current_risks' global variable
-    check_project_status.invoke({"dummy": "refresh"})
-    
-    # 2. Return the freshly updated list
-    return {"risks": current_risks}
+
 
 @app.get("/")
 def health_check():
