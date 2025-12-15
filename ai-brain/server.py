@@ -1015,7 +1015,18 @@ def reject_plan():
     
     return {"status": "Cancelled"}
 
-
+@app.get("/risks")
+def get_risks():
+    """
+    Force a refresh of the project status immediately 
+    so the Frontend gets live data on load.
+    """
+    # 1. Run the check logic explicitly!
+    # This updates the 'current_risks' global variable
+    check_project_status.invoke({"dummy": "refresh"})
+    
+    # 2. Return the freshly updated list
+    return {"risks": current_risks}
 
 @app.get("/")
 def health_check():
