@@ -1005,13 +1005,16 @@ def approve_plan():
 
 @app.post("/reject")
 def reject_plan():
-    global pending_plan, current_budget_warning  # <--- Access the warning variable
+    global pending_plan, current_budget_warning, current_risks
     
-    # 1. Clear the Plan
+    # 2. Clear the plan and the specific warning string
     pending_plan = None
-    
-    # 2. Clear the Risk Warning (This fixes your bug)
     current_budget_warning = "" 
+    
+    # 3. ✅ ADD THIS: Force refresh the risk list immediately
+    # This runs the logic that rebuilds the list. Since current_budget_warning 
+    # is now empty, the new list will NOT have the red alert.
+    check_project_status.invoke({"dummy": "refresh"})
     
     return {"status": "Cancelled"}
 

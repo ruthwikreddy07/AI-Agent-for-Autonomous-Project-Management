@@ -168,6 +168,12 @@ export class App implements OnInit, AfterViewChecked {
   
   onReject() {
     this.showApprovalButtons = false;
-    this.aiService.rejectPlan().subscribe(() => this.chatHistory.push({ sender: 'System', text: '❌ Plan Cancelled.' }));
+    this.aiService.rejectPlan().subscribe(() => {
+      // 1. Show cancellation message
+      this.chatHistory.push({ sender: 'System', text: '❌ Plan Cancelled.' });
+      
+      //Refresh the sidebar immediately
+      this.fetchRisks(); 
+    });
   }
 }
