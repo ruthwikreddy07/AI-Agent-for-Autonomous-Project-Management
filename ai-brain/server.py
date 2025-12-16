@@ -898,6 +898,9 @@ def chat_endpoint(req: UserRequest):
     approval = False
     plan_staged = False
 
+    # ✅ NEW: specific set to track tools run in this turn
+    executed_tool_names = set()
+
     if response.tool_calls:
         # First handle any plan calls first (so we stage instead of creating)
         for tc in response.tool_calls:
@@ -906,16 +909,11 @@ def chat_endpoint(req: UserRequest):
                 if res == "PLAN_STAGED":
                     plan_staged = True
                     if pending_plan:
-                        # 1. Format Tasks
                         preview_lines = [f"• {t.get('name')} → {t.get('owner')}" for t in pending_plan["tasks"]]
-                        
-                        # 2. Get the Pre-Formatted Budget Info
                         budget_info = pending_plan.get("budget_summary", "")
-
-                        # 3. Construct the Message
                         final = (
                             f"I have drafted a plan:\n"
-                            f"{budget_info}\n\n"  # <--- This will now be 🚨 or ✅ automatically
+                            f"{budget_info}\n\n"
                             f"{chr(10).join(preview_lines)}\n\n"
                             f"Proceed?"
                         )
@@ -932,9 +930,23 @@ def chat_endpoint(req: UserRequest):
             for tc in response.tool_calls:
                 fn = tc["name"]
                 args = tc["args"]
+
+                # ✅ FIX: Prevent duplicate scheduling in the same turn
+                if fn == "schedule_meeting_tool" and fn in executed_tool_names:
+                    print("⚠️ Skipping duplicate schedule call")
+                    continue
+                
+                # Add to set
+                executed_tool_names.add(fn)
+
                 if fn == "create_task_in_trello":
                     final = create_task_in_trello.invoke(args)
                 elif fn == "send_slack_announcement":
+                    # ✅ OPTIONAL: Prevent double announcement if we just scheduled a meeting
+                    # (Since schedule_meeting_tool already sends a slack msg)
+                    if "schedule_meeting_tool" in executed_tool_names:
+                         print("⚠️ Skipping announcement (Meeting tool handles it)")
+                         continue
                     send_slack_announcement.invoke(args)
                     final = "Message sent."
                 elif fn == "check_project_status":
@@ -949,7 +961,6 @@ def chat_endpoint(req: UserRequest):
                     chat_history.append(HumanMessage(content=f"Memory: {res}"))
                     follow = llm_with_tools.invoke(chat_history)
                     final = follow.content
-                    # handle nested plan from memory
                     if follow.tool_calls:
                         for tc_follow in follow.tool_calls:
                             if tc_follow["name"] == "execute_project_plan":
