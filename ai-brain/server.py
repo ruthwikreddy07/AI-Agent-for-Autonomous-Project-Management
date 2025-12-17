@@ -783,12 +783,11 @@ def heal_project_schedule(dummy: str = ""):
         
         # 1. Map current status
         for c in cards:
-            if isinstance(c, dict) and "json" in c: c = c["json"] # Handle n8n formatting
-            # Logic: If late, effective end is Tomorrow. If on time, effective end is Due Date.
+            if isinstance(c, dict) and "json" in c: c = c["json"]
             try:
                 due = datetime.fromisoformat(c["due"].replace("Z", ""))
             except:
-                continue # Skip cards with no due date
+                continue 
             if due < datetime.now(): 
                 effective_end = datetime.now() + timedelta(days=1)
             else: 
@@ -799,36 +798,37 @@ def heal_project_schedule(dummy: str = ""):
         updates = []
         for c in cards:
             if isinstance(c, dict) and "json" in c: c = c["json"]
-            if "Blocked By:" in c.get("desc", ""):
+            
+            # ✅ FIX STARTS HERE: Robust check for the blocker text
+            desc = c.get("desc", "")
+            if "Blocked By:" in desc:
                 try:
-                    blocker = c["desc"].split("Blocked By: ")[1].split("\n")[0]
+                    # Split by "Blocked By:" (no space) to catch all variations
+                    # then .strip() removes any leading/trailing spaces
+                    blocker_part = desc.split("Blocked By:")[1]
+                    blocker = blocker_part.split("\n")[0].strip()
                     
                     if blocker in task_status:
                         blocker_end = task_status[blocker]
                         
-                        # Handle cases where 'start' might be missing in Trello card
                         my_start_str = c.get("start")
                         if my_start_str:
                              my_start = datetime.fromisoformat(my_start_str.replace("Z", ""))
                         else:
-                             # Fallback: Assume start is today if not set
                              my_start = datetime.now() 
                         
                         if my_start <= blocker_end:
-                            # PUSH DATE
                             new_due = blocker_end + timedelta(days=2)
                             
-                            # --- FIX: ADD AUTHENTICATION HERE ---
                             query_params = {
                                 "key": TRELLO_API_KEY,
                                 "token": TRELLO_TOKEN,
                                 "due": new_due.isoformat()
                             }
                             
-                            # Update Trello
                             resp = requests.put(
                                 f"https://api.trello.com/1/cards/{c['id']}", 
-                                params=query_params # Pass params correctly
+                                params=query_params 
                             )
                             
                             if resp.status_code == 200:
