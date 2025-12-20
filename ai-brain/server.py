@@ -335,6 +335,7 @@ You are an Intelligent AI Project Manager.
 ===========================
 
 1️⃣  **execute_project_plan**
+    - 🚨 **PRIORITY TOOL**: Use this for ANY request involving "Plan", "Build", "Create", "Design", or "Develop".
     - Use this ONLY for COMPLEX requests.
     - Trigger words: "Build", "Create", "Launch", "Develop", "Plan".
     - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array.
