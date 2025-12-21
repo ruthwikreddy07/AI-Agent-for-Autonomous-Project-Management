@@ -55,6 +55,7 @@ N8N_TRELLO_URL = os.getenv("N8N_TRELLO_URL")
 N8N_SLACK_URL = os.getenv("N8N_SLACK_URL")
 N8N_GET_CARDS_URL = os.getenv("N8N_GET_CARDS_URL")
 N8N_ALERT_URL = os.getenv("N8N_ALERT_URL")
+N8N_GET_ALL_CARDS_URL = os.getenv("N8N_GET_ALL_CARDS_URL")
 
 TRELLO_API_KEY = os.getenv("TRELLO_API_KEY")
 TRELLO_TOKEN = os.getenv("TRELLO_TOKEN")
@@ -171,20 +172,41 @@ def calculate_smart_timeline(tasks):
     Sorts tasks by dependency and calculates dates skipping weekends/holidays.
     Updates the description with Blocked By and Timeline info.
     """
-    # 1. Topological Sort
+    # 1. Topological Sort preparation
     graph = {}
-    def clean(s): return s.lower().strip()
-    task_map = {clean(t["name"]): t for t in tasks}
+    def clean(s): return str(s).lower().strip()
     
+    # Build a map of clean_name -> task
+    task_map = {}
     for t in tasks:
-        # Standardize Description Field (Fixes the missing text bug)
+        # Safety: Ensure name is a string
+        if "name" in t:
+            task_map[clean(t["name"])] = t
+
+    for t in tasks:
+        # Standardize Description Field
         if "desc" not in t:
             t["desc"] = t.get("description", "")
         if t["desc"] is None:
             t["desc"] = ""
             
-        deps = t.get("depends_on", [])
-        valid_deps = {clean(d) for d in deps if clean(d) in task_map}
+        # --- 🔥 FIX: Normalize Dependencies (Handle Dict vs String) ---
+        raw_deps = t.get("depends_on", [])
+        normalized_deps = []
+        
+        for d in raw_deps:
+            if isinstance(d, dict) and "name" in d:
+                # Extract name if it's an object: {"name": "Task A"}
+                normalized_deps.append(d["name"])
+            elif isinstance(d, str):
+                # Use directly if it's a string: "Task A"
+                normalized_deps.append(d)
+        
+        # Save back the clean list of strings so the rest of the code works
+        t["depends_on"] = normalized_deps
+        # -------------------------------------------------------------
+
+        valid_deps = {clean(d) for d in normalized_deps if clean(d) in task_map}
         graph[clean(t["name"])] = valid_deps
 
     try:
@@ -201,6 +223,7 @@ def calculate_smart_timeline(tasks):
 
     # Iterate through the SORTED clean names
     for clean_name in ordered_clean_names:
+        if clean_name not in task_map: continue
         task = task_map[clean_name]
         
         # Start Date Logic
@@ -238,10 +261,8 @@ def calculate_smart_timeline(tasks):
         task["due_date"] = current_date.strftime("%Y-%m-%d")
         task["duration"] = days_needed
         
-        # --- 📝 FORCE WRITE TO DESCRIPTION ---
-        # This ensures the text is added even if the AI used 'description' instead of 'desc'
+        # Write to Description
         if task.get("depends_on"):
-            # Join the dependencies into a string
             blocker_text = ', '.join(task['depends_on'])
             task["desc"] += f"\n\n🛑 **Blocked By:** {blocker_text}"
             
@@ -742,107 +763,224 @@ def check_project_status(dummy: str = ""):
     """Checks Trello for overdue tasks AND active budget risks."""
     global current_risks, current_budget_warning
     try:
-        # 1. Fetch Trello Cards
         risks = []
         try:
-            response = requests.get(N8N_GET_CARDS_URL, timeout=10)
+            print(f"🔍 Fetching cards from: {N8N_GET_ALL_CARDS_URL}")
+            response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=10)
+            
             if response.status_code == 200:
-                cards = response.json()
-                today = datetime.now()
+                # 1. Handle Response Type
+                
+                raw_data = response.json()
+                # --- DEBUG PRINT ---
+                print(f"📦 Raw Data Type: {type(raw_data)}")
+                if isinstance(raw_data, list):
+                    print(f"📦 List Length: {len(raw_data)}")
+                # -------------------
+
+                # 2. Normalize to List
+                cards = []
+                if isinstance(raw_data, list):
+                    cards = raw_data
+                elif isinstance(raw_data, dict):
+                    if "data" in raw_data and isinstance(raw_data["data"], list):
+                        cards = raw_data["data"]
+                    else:
+                        cards = [raw_data]
+                
+                print(f"✅ Received {len(cards)} cards. Checking dates...")
+
+                today = datetime.now().date() # Compare DATES only, ignore time
+                
                 for c in cards:
-                    if isinstance(c, dict) and "json" in c: c = c["json"]
+                    # Handle n8n wrapper "json": {...}
+                    if isinstance(c, dict) and "json" in c: 
+                        c = c["json"]
+                    
+                    if not isinstance(c, dict): continue
+
+                    # Check for 'due' key
                     if c.get("due"):
                         try:
-                            d = datetime.fromisoformat(c["due"].replace("Z", "+00:00")).replace(tzinfo=None)
-                            # ✅ FIX: Check if date is today or past (>= instead of >)
-                            if today.date() >= d.date():
-                                risks.append(f"⚠️ DUE/OVERDUE: '{c['name']}'")
-                        except: pass
-        except Exception as e:
-            print(f"⚠️ Trello Check Failed: {e}")
+                            # Clean Z and parse
+                            due_str = c["due"].replace("Z", "")
+                            # Handle standard ISO format
+                            d_full = datetime.fromisoformat(due_str)
+                            d_date = d_full.date()
+                            
+                            # LOGIC:
+                            # If Due Date is BEFORE Today = Overdue
+                            # If Due Date is TODAY = Due Today (Risk)
+                            
+                            if d_date < today:
+                                days_late = (today - d_date).days
+                                risk_msg = f"⚠️ OVERDUE ({days_late} days): '{c.get('name', 'Unknown')}'"
+                                risks.append(risk_msg)
+                                print(f"❌ RISK: {risk_msg}")
+                                
+                            elif d_date == today:
+                                risk_msg = f"⚠️ DUE TODAY: '{c.get('name', 'Unknown')}'"
+                                risks.append(risk_msg)
+                                print(f"❌ RISK: {risk_msg}")
+                                
+                        except Exception as e:
+                            print(f"⚠️ Error parsing date for '{c.get('name')}': {e}")
+                            pass
+            else:
+                print(f"❌ n8n Error: {response.status_code}")
+                return "Error connecting to Trello."
 
-        # 2. ADD BUDGET RISK (Priority #1)
+        except Exception as e:
+            print(f"⚠️ Trello Fetch Crash: {e}")
+            return "Failed to check project status."
+
+        # Add Budget Risks
         if current_budget_warning:
             risks.insert(0, current_budget_warning)
 
-        # 3. Save to Global Variable
         current_risks = risks
         
         if not risks:
             return "✅ ALL GOOD. No overdue tasks or budget issues."
         
-        return "Risks Found"
+        return "Risks Found:\n" + "\n".join(risks)
     except Exception as e:
         return f"Error: {e}"
-
+    
 @tool
 def heal_project_schedule(dummy: str = ""):
-    """Scans Trello. If a task is late, pushes dependent tasks forward."""
+    """
+    1. Scans Trello (Backlog & Doing).
+    2. Phase 1: Moves OVERDUE tasks to the next valid business day.
+    3. Phase 2: Moves DEPENDENT tasks to start after their blockers.
+    """
     try:
-        cards = requests.get(N8N_GET_CARDS_URL).json()
+        # Fetch Data
+        response = requests.get(N8N_GET_ALL_CARDS_URL)
+        raw_data = response.json()
+
+        # --- 🔥 FIX: Normalize Data ---
+        cards = []
+        if isinstance(raw_data, list):
+            cards = raw_data
+        elif isinstance(raw_data, dict):
+            if "data" in raw_data and isinstance(raw_data["data"], list):
+                cards = raw_data["data"]
+            else:
+                cards = [raw_data]
+
         task_status = {}
+        updates = []
         
-        # 1. Map current status
+        # =========================================================
+        # PHASE 1: HEAL ROOT CAUSES (Overdue Tasks)
+        # =========================================================
         for c in cards:
             if isinstance(c, dict) and "json" in c: c = c["json"]
+            if not isinstance(c, dict): continue
+
             try:
+                if not c.get("due"): continue
                 due = datetime.fromisoformat(c["due"].replace("Z", ""))
             except:
                 continue 
-            if due < datetime.now(): 
-                effective_end = datetime.now() + timedelta(days=1)
-            else: 
-                effective_end = due
-            task_status[c["name"]] = effective_end
 
-        # 2. Fix Dependencies
-        updates = []
+            effective_due = due
+
+            # Check if overdue OR due today
+            if due.date() <= datetime.now().date():
+                
+                preferred_time = due.time()
+                temp_date = datetime.now()
+                
+                # If time has passed today, start from tomorrow
+                if temp_date.time() > preferred_time:
+                    temp_date += timedelta(days=1)
+
+                days_added = 0
+                while days_added < 1:
+                    is_weekend = temp_date.weekday() in WEEKEND_DAYS
+                    is_holiday = temp_date.strftime("%Y-%m-%d") in COMPANY_HOLIDAYS
+                    if not is_weekend and not is_holiday:
+                        days_added += 1
+                    else:
+                        temp_date += timedelta(days=1)
+                
+                new_due = datetime.combine(temp_date.date(), preferred_time)
+
+                # Enforce 9-6
+                if new_due.hour < 9: new_due = new_due.replace(hour=10, minute=0)
+                elif new_due.hour >= 18: new_due = new_due.replace(hour=17, minute=0)
+
+                try:
+                    requests.put(
+                        f"https://api.trello.com/1/cards/{c['id']}", 
+                        params={"key": TRELLO_API_KEY, "token": TRELLO_TOKEN, "due": new_due.isoformat()}
+                    )
+                    updates.append(f"🔄 Rescheduled Overdue: '{c.get('name')}' to {new_due.strftime('%Y-%m-%d @ %I:%M %p')}")
+                    effective_due = new_due 
+                except Exception as e:
+                    print(f"Failed to update card: {e}")
+
+            task_status[c.get("name")] = effective_due
+            if "]" in c.get("name", ""):
+                clean_name = c["name"].split("]")[1].strip()
+                task_status[clean_name] = effective_due
+
+        # =========================================================
+        # PHASE 2: HEAL DEPENDENCIES
+        # =========================================================
         for c in cards:
             if isinstance(c, dict) and "json" in c: c = c["json"]
+            if not isinstance(c, dict): continue
             
-            # ✅ FIX STARTS HERE: Robust check for the blocker text
             desc = c.get("desc", "")
-            if "Blocked By:" in desc:
+            if desc and "Blocked By:" in desc:
                 try:
-                    # Split by "Blocked By:" (no space) to catch all variations
-                    # then .strip() removes any leading/trailing spaces
                     blocker_part = desc.split("Blocked By:")[1]
-                    blocker = blocker_part.split("\n")[0].strip()
+                    blocker_clean = blocker_part.replace("*", "")
+                    blocker = blocker_clean.split("\n")[0].strip()
+                    if "]" in blocker: blocker = blocker.split("]")[1].strip()
                     
                     if blocker in task_status:
                         blocker_end = task_status[blocker]
                         
-                        my_start_str = c.get("start")
-                        if my_start_str:
-                             my_start = datetime.fromisoformat(my_start_str.replace("Z", ""))
-                        else:
-                             my_start = datetime.now() 
+                        my_current_due = None
+                        if c.get("due"):
+                            my_current_due = datetime.fromisoformat(c["due"].replace("Z", ""))
                         
-                        if my_start <= blocker_end:
-                            new_due = blocker_end + timedelta(days=2)
+                        if my_current_due and my_current_due <= blocker_end:
                             
-                            query_params = {
-                                "key": TRELLO_API_KEY,
-                                "token": TRELLO_TOKEN,
-                                "due": new_due.isoformat()
-                            }
+                            pref_time = my_current_due.time()
+                            temp_date = blocker_end
+                            days_added = 0
+                            while days_added < 1:
+                                temp_date += timedelta(days=1)
+                                is_weekend = temp_date.weekday() in WEEKEND_DAYS
+                                is_holiday = temp_date.strftime("%Y-%m-%d") in COMPANY_HOLIDAYS
+                                if not is_weekend and not is_holiday:
+                                    days_added += 1
+                                else:
+                                    temp_date += timedelta(days=1)
                             
-                            resp = requests.put(
+                            new_due = datetime.combine(temp_date.date(), pref_time)
+
+                            if new_due.hour < 9: new_due = new_due.replace(hour=10, minute=0)
+                            elif new_due.hour >= 18: new_due = new_due.replace(hour=17, minute=0)
+
+                            requests.put(
                                 f"https://api.trello.com/1/cards/{c['id']}", 
-                                params=query_params 
+                                params={"key": TRELLO_API_KEY, "token": TRELLO_TOKEN, "due": new_due.isoformat()}
                             )
-                            
-                            if resp.status_code == 200:
-                                updates.append(f"🛠️ Healed: Moved '{c['name']}' to {new_due.date()} because '{blocker}' is late.")
-                            else:
-                                updates.append(f"❌ Failed to update '{c['name']}': {resp.text}")
-                except Exception as inner_e:
-                    print(f"Error processing card {c.get('name')}: {inner_e}")
+                            updates.append(f"🛠️ Pushed Dependent: '{c.get('name')}' to {new_due.strftime('%Y-%m-%d @ %I:%M %p')} (Blocked by {blocker})")
+
+                except Exception:
                     continue
         
         return "\n".join(updates) if updates else "Schedule Healthy (No conflicts found)."
     except Exception as e:
         return f"Error healing: {e}"
+    
 
 # Bind tools
 llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool,heal_project_schedule])
@@ -973,7 +1111,6 @@ def chat_endpoint(req: UserRequest):
 
     chat_history.append(response)
     return {"reply": final, "approval_required": approval}
-
 @app.post("/approve")
 def approve_plan():
     global pending_plan
@@ -1014,6 +1151,8 @@ def approve_plan():
 
     pending_plan = None
     return {"status": "Executed", "details": "\n".join(results)}
+
+
 
 @app.post("/reject")
 def reject_plan():
