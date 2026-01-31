@@ -201,6 +201,7 @@ def calculate_smart_timeline(tasks):
     """
     Sorts tasks by dependency and calculates dates skipping weekends/holidays.
     Updates the description with Blocked By and Timeline info.
+    Includes FUZZY MATCHING and SEQUENTIAL FALLBACK.
     """
     # 0. Normalize tasks (Handle strings vs dicts to prevent crashes)
     normalized_tasks = []
@@ -211,43 +212,71 @@ def calculate_smart_timeline(tasks):
             normalized_tasks.append(t)
     tasks = normalized_tasks
 
-    # 1. Topological Sort preparation
+    # 1. Preparation
     graph = {}
     def clean(s): return str(s).lower().strip()
     
     # Build a map of clean_name -> task
     task_map = {}
     for t in tasks:
-        # Safety: Ensure name is a string
         if "name" in t:
             task_map[clean(t["name"])] = t
 
+    # --- HELPER: Fuzzy Matcher ---
+    def find_best_match(dep_name):
+        c_dep = clean(dep_name)
+        if c_dep in task_map: return c_dep
+        # Try partial match (e.g. "Backend" matching "Build Backend")
+        for t_name in task_map:
+            if c_dep in t_name or t_name in c_dep:
+                return t_name
+        return None
+
+    # 2. Build Graph & Resolve Dependencies
     for t in tasks:
-        # Standardize Description Field
-        if "desc" not in t:
-            t["desc"] = t.get("description", "")
-        if t["desc"] is None:
-            t["desc"] = ""
+        # Standardize Description
+        if "desc" not in t: t["desc"] = t.get("description", "")
+        if t["desc"] is None: t["desc"] = ""
             
-        # --- 🔥 FIX: Normalize Dependencies (Handle Dict vs String) ---
+        # Normalize Dependencies
         raw_deps = t.get("depends_on", [])
+        
+        # --- FIX: Handle case where AI returns a single string instead of a list ---
+        if isinstance(raw_deps, str):
+            raw_deps = [raw_deps]
+            
         normalized_deps = []
-        
         for d in raw_deps:
-            if isinstance(d, dict) and "name" in d:
-                # Extract name if it's an object: {"name": "Task A"}
-                normalized_deps.append(d["name"])
-            elif isinstance(d, str):
-                # Use directly if it's a string: "Task A"
-                normalized_deps.append(d)
+            if isinstance(d, dict) and "name" in d: normalized_deps.append(d["name"])
+            elif isinstance(d, str): normalized_deps.append(d)
         
-        # Save back the clean list of strings so the rest of the code works
-        t["depends_on"] = normalized_deps
-        # -------------------------------------------------------------
+        # Resolve clean names using Fuzzy Match
+        final_deps = []
+        for d in normalized_deps:
+            match = find_best_match(d)
+            if match:
+                final_deps.append(match)
+        
+        # Save back specific dependencies for the topological sort
+        t["depends_on"] = final_deps 
+        graph[clean(t["name"])] = set(final_deps)
 
-        valid_deps = {clean(d) for d in normalized_deps if clean(d) in task_map}
-        graph[clean(t["name"])] = valid_deps
+    # 3. --- FALLBACK: Sequential Logic ---
+    # If the AI provided ZERO dependencies (Lazy AI), assume a step-by-step list.
+    total_edges = sum(len(deps) for deps in graph.values())
+    if total_edges == 0 and len(tasks) > 1:
+        prev_clean = None
+        prev_raw = None
+        for t in tasks:
+            curr_clean = clean(t["name"])
+            if prev_clean and curr_clean in task_map:
+                # Create a link: Previous -> Current
+                graph[curr_clean].add(prev_clean)
+                t["depends_on"].append(prev_clean) 
+            prev_clean = curr_clean
+            prev_raw = t["name"]
 
+    # 4. Topological Sort
     try:
         sorter = TopologicalSorter(graph)
         ordered_clean_names = list(sorter.static_order())
@@ -255,18 +284,17 @@ def calculate_smart_timeline(tasks):
         print(f"⚠️ Cycle detected or sort error: {e}")
         ordered_clean_names = [clean(t["name"]) for t in tasks] # Fallback
 
-    # 2. Date Calculation
+    # 5. Date Calculation
     schedule = []
-    completion_dates = {} # Key: Clean Name -> Value: End Date
+    completion_dates = {} 
     project_start = datetime.now()
 
-    # Iterate through the SORTED clean names
     for clean_name in ordered_clean_names:
         if clean_name not in task_map: continue
         task = task_map[clean_name]
         
         # Start Date Logic
-        my_clean_deps = [clean(d) for d in task.get("depends_on", [])]
+        my_clean_deps = task.get("depends_on", [])
         dep_ends = [completion_dates[d] for d in my_clean_deps if d in completion_dates]
         
         if dep_ends:
@@ -279,7 +307,7 @@ def calculate_smart_timeline(tasks):
         for k, v in DURATION_RULES.items():
             if k in task["name"].lower(): days_needed = max(days_needed, v)
 
-        # Calendar Logic (Skip Weekends)
+        # Calendar Logic
         while start_date.weekday() in WEEKEND_DAYS or start_date.strftime("%Y-%m-%d") in COMPANY_HOLIDAYS:
             start_date += timedelta(days=1)
 
@@ -302,7 +330,9 @@ def calculate_smart_timeline(tasks):
         
         # Write to Description
         if task.get("depends_on"):
-            blocker_text = ', '.join(task['depends_on'])
+            # Convert clean names back to readable names
+            readable_deps = [task_map[d]["name"] for d in task["depends_on"] if d in task_map]
+            blocker_text = ', '.join(readable_deps)
             task["desc"] += f"\n\n🛑 **Blocked By:** {blocker_text}"
             
         task["desc"] += f"\n📅 **Timeline:** {task['start_date']} ➝ {task['due_date']}"
@@ -508,6 +538,10 @@ You are an Intelligent AI Project Manager.
    - Always assign tasks to the RIGHT PERSON based on skills.
    - Use the roster above to decide.
 
+5. **OUTPUT FORMAT**
+   - DO NOT use XML tags like <function>.
+   - ALWAYS call tools using JSON ONLY.
+   - Tool inputs must be valid JSON inside the tool call.
 ===========================
 RULES & OUTPUT
 ===========================
@@ -517,14 +551,35 @@ Every task MUST include:
 - deadline
 - focus_time (1-hour slot)
 
-- IF user asks to "Plan", "Design", "Build": call execute_project_plan and produce multiple subtasks.
+- IF user asks to "Plan", "Design", "Build": call execute_project_plan and produce mutiple subtasks.
 - Assign owners using the team roster or DEFAULT_OWNER fallback.
+- ALWAYS call tools using JSON only when invoked.
 - Always think step-by-step.
 - Always choose the correct tool.
 - Never mix complex plans with simple tasks.
+- Ensure clean JSON formatting.
 - MEMORY USAGE:
   - If you use 'consult_project_memory', do NOT output the raw "Memory Findings".
   - Read the findings silently, then formulate a natural language answer for the user based on that data.
+
+===========================
+🛑  STRICT JSON RULE
+===========================
+
+When calling a tool:
+
+- The FULL reply must be ONLY a JSON object.
+- Do NOT add explanations, descriptions, or natural language.
+- Do NOT wrap JSON in backticks.
+- Do NOT include text before or after JSON.
+- Output EXACTLY:
+
+{{
+    "tool_name": "<tool_name>",
+    "arguments": "..."
+}}
+
+If you are not calling a tool, output normal text.
 """
     # This line MUST be indented to be part of the function
     chat_history = [SystemMessage(content=prompt)]
@@ -673,7 +728,7 @@ def send_slack_announcement(message: str):
 
 @tool
 def consult_project_memory(query: str, username: str = "placeholder"):
-    """Searches project documentation in the vector database. Do not provide username."""
+    """Searches project documentation in the vector database."""
     try:
         v = generate_embedding(query)
         # HF sometimes returns [[...]] or [...]
