@@ -6,7 +6,7 @@ import time as time_module
 from graphlib import TopologicalSorter
 from datetime import datetime, timedelta, time
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -16,9 +16,10 @@ from passlib.context import CryptContext
 from jose import jwt
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from pinecone import Pinecone
 from dotenv import load_dotenv
+import google.generativeai as genai  # <--- NEW IMPORT
 
 # --- calendar_tool import (optional) ---
 try:
@@ -29,7 +30,6 @@ except ImportError:
     def create_meeting(*args, **kwargs): return "Error: calendar_tool.py missing"
     def check_availability(*args, **kwargs): return False, "calendar_tool.py missing"
     def find_next_free_slot(*args, **kwargs): return False, None, "calendar_tool.py missing", []
-    def find_next_free_slot(*args, **kwargs): return False, None, "calendar_tool.py missing"
 
 load_dotenv()
 
@@ -70,18 +70,43 @@ TRELLO_LABELS = {
 if GROQ_API_KEY:
     os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
-# Hugging Face embedding (lighter than local sentence_transformers)
+# ---------------------------
+# EMBEDDING CONFIGURATION
+# ---------------------------
 HF_TOKEN = os.getenv("HF_TOKEN")
-HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+
+# 🔥 FIX 1: Use the new router endpoint (api-inference is deprecated)
+HF_API_URL = "https://router.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+
+# ---------------------------
+# EMBEDDING CONFIGURATION (GOOGLE GEMINI)
+# ---------------------------
+# Make sure GOOGLE_API_KEY is in your .env file
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+if not GOOGLE_API_KEY:
+    print("⚠️ WARNING: GOOGLE_API_KEY is missing. Embeddings will fail.")
+else:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 def generate_embedding(text: str):
-    if not HF_TOKEN:
-        raise RuntimeError("HF_TOKEN not set")
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    resp = requests.post(HF_API_URL, headers=headers, json={"inputs": text, "options": {"wait_for_model": True}}, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
-
+    """
+    Generates embeddings using Google Gemini (Free Tier).
+    Output Dimension: 768
+    """
+    try:
+        # Use the latest stable embedding model
+        result = genai.embed_content(
+            model="models/text-embedding-004",
+            content=text,
+            task_type="retrieval_document" 
+        )
+        return result['embedding']
+    except Exception as e:
+        print(f"❌ Google Embedding Error: {e}")
+        # Return a zero-vector fallback to prevent server crash, 
+        # allowing the user to see the error in logs without 500ing immediately.
+        raise RuntimeError(f"Google API Error: {str(e)}")
 # durations for due date heuristics
 DURATION_RULES = {"ui": 3, "design": 3, "api": 5, "database": 4, "test": 2, "deploy": 1, "fix": 1, "meeting": 0}
 
@@ -130,6 +155,7 @@ try:
     db = client["ai_project_manager"]
     users_collection = db["users"]
     employees_collection = db["employees"]
+    chats_collection = db["chats"]
     client.admin.command("ping")
     print("✅ Connected to MongoDB")
 except Exception as e:
@@ -155,6 +181,10 @@ class User(BaseModel):
 
 class UserRequest(BaseModel):
     message: str
+    session_id: str = "default_session"
+
+class RejectRequest(BaseModel):
+    reason: str = "No reason provided."
 
 # --------------------
 # MEMORY & LLM
@@ -172,6 +202,15 @@ def calculate_smart_timeline(tasks):
     Sorts tasks by dependency and calculates dates skipping weekends/holidays.
     Updates the description with Blocked By and Timeline info.
     """
+    # 0. Normalize tasks (Handle strings vs dicts to prevent crashes)
+    normalized_tasks = []
+    for t in tasks:
+        if isinstance(t, str):
+            normalized_tasks.append({"name": t, "desc": "Auto-generated", "depends_on": []})
+        elif isinstance(t, dict):
+            normalized_tasks.append(t)
+    tasks = normalized_tasks
+
     # 1. Topological Sort preparation
     graph = {}
     def clean(s): return str(s).lower().strip()
@@ -272,6 +311,17 @@ def calculate_smart_timeline(tasks):
 
     return schedule
 
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    """Decodes the token to get the username."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+        return username
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
 def get_trello_id_by_email(email: str) -> str:
     if not TRELLO_API_KEY or not TRELLO_TOKEN:
         return ""
@@ -297,14 +347,37 @@ def get_dynamic_roster():
         return "Error."
 
 def auto_assign_owner(task_name: str, task_desc: str) -> str:
+    """
+    Assigns a task to an employee by matching skills OR role keywords.
+    """
     text = (task_name + " " + task_desc).lower()
+    
     try:
-        for emp in list(employees_collection.find({}, {"_id": 0})):
+        employees = list(employees_collection.find({}, {"_id": 0}))
+        
+        # --- STRATEGY 1: Exact Skill Match ---
+        # (e.g. Task has "React", Employee has "React")
+        for emp in employees:
             for skill in emp.get("skills", []):
-                if skill.lower() in text:
+                clean_skill = skill.strip().lower()
+                if clean_skill and clean_skill in text:
                     return emp["name"]
-    except Exception:
+        
+        # --- STRATEGY 2: Role Keyword Match ---
+        # (e.g. Task has "Frontend", Employee Role is "Frontend Developer")
+        common_roles = ["frontend", "backend", "ui", "ux", "designer", "qa", "devops", "security", "data", "mobile", "cloud"]
+        
+        for emp in employees:
+            role = emp.get("role", "").lower()
+            for keyword in common_roles:
+                # If the keyword (e.g. "frontend") is in BOTH the role AND the task text
+                if keyword in role and keyword in text:
+                    return emp["name"]
+
+    except Exception as e:
+        print(f"⚠️ Assignment Logic Error: {e}")
         pass
+        
     return "Unassigned"
 
 def get_default_owner():
@@ -344,10 +417,11 @@ current_budget_warning = ""
 def refresh_system_prompt():
     global chat_history
     roster = get_dynamic_roster()
-    
+    today_str = datetime.now().strftime("%Y-%m-%d (%A)")
     # Note: The JSON example below uses {{ and }} to escape them for the f-string
     prompt = f"""
 You are an Intelligent AI Project Manager.
+📅 TODAY'S DATE: {today_str}
 
 {roster}
 
@@ -356,7 +430,8 @@ You are an Intelligent AI Project Manager.
 ===========================
 
 1️⃣  **execute_project_plan**
-    - 🚨 **PRIORITY TOOL**: Use this for ANY request involving "Plan", "Build", "Create", "Design", or "Develop".
+    - 🚨 **PRIORITY TOOL**: - Use this when the user explicitly asks to CREATE a new plan or execution strategy.
+     - Do NOT use this if the user just mentions "development" as a topic for a meeting.
     - Use this ONLY for COMPLEX requests.
     - Trigger words: "Build", "Create", "Launch", "Develop", "Plan".
     - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array.
@@ -385,8 +460,10 @@ You are an Intelligent AI Project Manager.
 2️⃣  **create_task_in_trello**
     - Use ONLY for simple, single tasks.
 
-3️⃣  **schedule_meeting_tool**
-    - Use when user says: "Schedule", "Book", "Set up meeting"
+3️⃣  schedule_meeting_tool
+    - 🚨 **HIGHEST PRIORITY**: If the user input contains "Schedule", "Book", or "Set up meeting", you MUST use this tool.
+    - 🛑 **IF NO TIME IS PROVIDED**: Do NOT call the tool. Reply: "When would you like to schedule the meeting?"
+    - 🛑 IGNORE the "Topic" for tool selection. (e.g., if user says "Schedule a meeting about Development", do NOT check development status. Just book the meeting).
     - 🛑 STEP 1: ALWAYS call with `action="check"` FIRST (never skip this step).
     - 🛑 STEP 2: Process the tool response:
       - If response says "✅ Available": Ask user "The time [TIME] is available. Would you like me to book it?"
@@ -395,13 +472,23 @@ You are an Intelligent AI Project Manager.
     - 🛑 STEP 3 (CRITICAL): 
       - If the user says "YES" (or "book it", "sure", "ok") after you suggested a time:
       - **YOU MUST CALL THE TOOL `schedule_meeting_tool`**.
-      - Arguments: `action="book"`, `start_time="THE_ISO_TIME_FROM_SYSTEM_NOTE"`.
+      - Arguments: `action="book"`, `start_time="THE_ISO_TIME"`, `summary="The Meeting Title"`.
       - **DO NOT** use `send_slack_announcement` for this.
+      - 🛑 The tool AUTOMATICALLY notifies Slack. **DO NOT** call `send_slack_announcement`.
       - **DO NOT** just reply with text.
 
 
 4️⃣  **check_project_status**
     - Use for project progress checks, risks, summaries
+    - 🛑 DO NOT use if the user asks to "Schedule" or "Book" a meeting.
+
+5️⃣  consult_project_memory
+    - Use when user asks specific questions about project facts (budget, deadlines, specs).
+    - 🛑 DO NOT use if the user asks to "Schedule" or "Book" a meeting.
+
+6️⃣  heal_project_schedule
+    - Use when the user asks to "Heal", "Fix", "Repair", or "Reschedule" the project.
+    - This tool automatically moves overdue tasks and resolves dependency conflicts in Trello.
 
 ===========================
 📌  CRITICAL DECISION RULES
@@ -441,6 +528,9 @@ Every task MUST include:
 - Always choose the correct tool.
 - Never mix complex plans with simple tasks.
 - Ensure clean JSON formatting.
+- MEMORY USAGE:
+  - If you use 'consult_project_memory', do NOT output the raw "Memory Findings".
+  - Read the findings silently, then formulate a natural language answer for the user based on that data.
 
 ===========================
 🛑  STRICT JSON RULE
@@ -595,7 +685,11 @@ def create_task_in_trello(task_name: str, description: str = "", owner: str = "A
 
 @tool
 def send_slack_announcement(message: str):
-    """Sends a message to the team Slack channel."""
+    """Sends a message to the team Slack channel.
+    Use this ONLY for general project announcements.
+    🛑 DO NOT use this to confirm meetings.
+    🛑 DO NOT use this to confirm task creation.
+    """
     try:
         requests.post(N8N_SLACK_URL, json={"message": message}, timeout=5)
         return "Success."
@@ -603,7 +697,7 @@ def send_slack_announcement(message: str):
         return "Failed."
 
 @tool
-def consult_project_memory(query: str):
+def consult_project_memory(query: str, username: str = "placeholder"):
     """Searches project documentation in the vector database."""
     try:
         v = generate_embedding(query)
@@ -612,21 +706,39 @@ def consult_project_memory(query: str):
             v = v[0]
         if isinstance(v, dict) and "error" in v:
             return f"Error from HuggingFace: {v['error']}"
-        r = memory_index.query(vector=v, top_k=3, include_metadata=True)
+        r = memory_index.query(
+            vector=v, 
+            top_k=3, 
+            include_metadata=True, 
+            filter={"username": username} 
+        )
         return "\n".join([f"- {m['metadata']['text']}" for m in r['matches']])
     except Exception as e:
         return f"Memory Error: {e}"
 
 
 @tool
-def schedule_meeting_tool(summary: str, description: str, start_time: str):
+def schedule_meeting_tool(start_time: str, summary: str = "General Meeting", description: str = "No description provided", action: str = "book"):
     """
     Schedules a Google Calendar meeting AND notifies Slack.
     Args:
-        summary: Title of the meeting (e.g. "Project Kickoff")
-        description: Details or agenda for the meeting
-        start_time: ISO format date string (e.g. "2025-12-01T10:00:00")
+        start_time: ISO format date string (e.g. "2026-02-01T14:00:00")
+        summary: Title of the meeting (Default: "General Meeting")
+        description: (Optional) Details
+        action: 'check' or 'book'
     """
+
+    if action == "check":
+        is_free, msg = check_availability(start_time)
+        if is_free:
+            return f"✅ Available. The time {start_time} is free. Ask the user if they want to book it."
+        else:
+            # Try to find next slot
+            found, next_iso, readable, _ = find_next_free_slot(start_time)
+            if found:
+                return f"⚠️ BUSY. The requested time is taken. However, {readable} ({next_iso}) is available. Ask the user if they prefer that time."
+            return f"⚠️ BUSY. No free slots found nearby."
+
     result = create_meeting(summary, description, start_time, is_video_call=True, strict_time=True)
     if "Success" in str(result):
         try:
@@ -642,12 +754,20 @@ def schedule_meeting_tool(summary: str, description: str, start_time: str):
     return result
 
 @tool
-def execute_project_plan(goal: str, tasks: str, budget: float = 0):
+def execute_project_plan(goal: str, tasks: str | list, budget: float = 0):
     """Generates a multi-step plan. Tasks must be a JSON string. Budget is the max limit in dollars."""
     global pending_plan, current_budget_warning
     try:
         print(f"🧐 DEBUG RAW AI INPUT: {tasks}")
-        raw_data = json.loads(tasks)
+        if isinstance(tasks, str):
+            try:
+                raw_data = json.loads(tasks)
+            except:
+                return "Error: Tasks argument was not valid JSON."
+        else:
+            # It's already a list or dict (LangChain parsed it automatically)
+            raw_data = tasks
+        
         if isinstance(raw_data, dict) and "tasks" in raw_data:
             raw_data = raw_data["tasks"]
         if not isinstance(raw_data, list):
@@ -766,7 +886,7 @@ def check_project_status(dummy: str = ""):
         risks = []
         try:
             print(f"🔍 Fetching cards from: {N8N_GET_ALL_CARDS_URL}")
-            response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=10)
+            response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=30)
             
             if response.status_code == 200:
                 # 1. Handle Response Type
@@ -939,11 +1059,24 @@ def heal_project_schedule(dummy: str = ""):
                 try:
                     blocker_part = desc.split("Blocked By:")[1]
                     blocker_clean = blocker_part.replace("*", "")
-                    blocker = blocker_clean.split("\n")[0].strip()
-                    if "]" in blocker: blocker = blocker.split("]")[1].strip()
+                    blocker_line = blocker_clean.split("\n")[0].strip()
                     
-                    if blocker in task_status:
-                        blocker_end = task_status[blocker]
+                    # Handle multiple blockers (comma separated)
+                    raw_blockers = [b.strip() for b in blocker_line.split(",")]
+                    
+                    max_blocker_end = None
+                    active_blocker_name = ""
+
+                    for b in raw_blockers:
+                        if "]" in b: b = b.split("]")[1].strip()
+                        if b in task_status:
+                            b_end = task_status[b]
+                            if max_blocker_end is None or b_end > max_blocker_end:
+                                max_blocker_end = b_end
+                                active_blocker_name = b
+                    
+                    if max_blocker_end:
+                        blocker_end = max_blocker_end
                         
                         my_current_due = None
                         if c.get("due"):
@@ -972,9 +1105,17 @@ def heal_project_schedule(dummy: str = ""):
                                 f"https://api.trello.com/1/cards/{c['id']}", 
                                 params={"key": TRELLO_API_KEY, "token": TRELLO_TOKEN, "due": new_due.isoformat()}
                             )
-                            updates.append(f"🛠️ Pushed Dependent: '{c.get('name')}' to {new_due.strftime('%Y-%m-%d @ %I:%M %p')} (Blocked by {blocker})")
+                            updates.append(f"🛠️ Pushed Dependent: '{c.get('name')}' to {new_due.strftime('%Y-%m-%d @ %I:%M %p')} (Blocked by {active_blocker_name})")
+                            
+                            # Update status for chains
+                            effective_due = new_due
+                            task_status[c.get("name")] = effective_due
+                            if "]" in c.get("name", ""):
+                                clean_name = c["name"].split("]")[1].strip()
+                                task_status[clean_name] = effective_due
 
-                except Exception:
+                except Exception as e:
+                    print(f"Dependency check error: {e}")
                     continue
         
         return "\n".join(updates) if updates else "Schedule Healthy (No conflicts found)."
@@ -985,9 +1126,190 @@ def heal_project_schedule(dummy: str = ""):
 # Bind tools
 llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool,heal_project_schedule])
 
+# ==========================================
+# 🧠 MEMORY & PERSISTENCE LAYER
+# ==========================================
+
 # --------------------
 # ENDPOINTS
 # --------------------
+
+def save_chat_message(session_id: str,role: str, content: str):
+    """Saves a message to MongoDB."""
+    try:
+        msg = {
+            "session_id": session_id,
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now()
+        }
+        chats_collection.insert_one(msg)
+    except Exception as e:
+        print(f"Error saving chat: {e}")
+
+def get_chat_history(session_id: str,limit=5):
+    """Loads context from DB + System Prompt."""
+    # Start with System Prompt (We reconstruct it to ensure it's fresh)
+    messages = [SystemMessage(content=chat_history[0].content)] if chat_history else []
+    
+    try:
+        # Filter MongoDB by "session_id"
+        recent_chats = list(chats_collection.find(
+            {"session_id": session_id} # <--- Filter applied here
+        ).sort("timestamp", -1).limit(limit))
+        
+        # Reverse to put in chronological order (Oldest -> Newest)
+        for chat in reversed(recent_chats):
+            if chat["role"] == "user":
+                messages.append(HumanMessage(content=chat["content"]))
+            else:
+                # Treat AI responses as messages
+                messages.append(AIMessage(content=f"{chat['content']}"))
+    except Exception:
+        pass
+        
+    return messages
+
+# --- 🛠️ UNIFIED TOOL PROCESSOR (The "Brain" Logic) ---
+def process_tool_calls(response, context_messages,username):
+    """
+    Handles tool calls recursively. 
+    Used by both /chat and /upload to ensure consistent behavior.
+    """
+    global pending_plan # Access the global variable
+    
+    final_text = response.content
+    approval_required = False
+    
+    # Track executed tools to prevent infinite loops
+    executed_tools = set()
+    
+    # We might need to loop if the AI reads memory -> then decides to plan
+    current_response = response
+    
+    # Loop while the AI wants to call tools (Max 3 turns for safety)
+    for _ in range(3): 
+        if not current_response.tool_calls:
+            break
+        
+        # ✅ CRITICAL FIX: Add the AI's "Tool Call" message to history
+        context_messages.append(current_response)
+            
+        for tc in current_response.tool_calls:
+            fn = tc["name"]
+            args = tc["args"]
+            
+            # Deduplication
+            if fn in executed_tools and fn != "consult_project_memory": 
+                continue
+            executed_tools.add(fn)
+            
+            tool_result = "Tool executed."
+
+            # --- A. PLANNING ---
+            if fn == "execute_project_plan":
+                res = execute_project_plan.invoke(args)
+                if res == "PLAN_STAGED":
+                    approval_required = True
+                    if pending_plan:
+                        preview = "\n".join([f"• {t.get('name')} → {t.get('owner')}" for t in pending_plan["tasks"]])
+                        budget = pending_plan.get("budget_summary", "")
+                        final_text = f"I have drafted a plan based on the request:\n{budget}\n\n{preview}\n\nProceed?"
+                        return final_text, approval_required # Stop here, wait for human
+                else:
+                    tool_result = str(res)
+
+            # --- B. STANDARD TOOLS ---
+            elif fn == "create_task_in_trello":
+                tool_result = create_task_in_trello.invoke(args)
+            elif fn == "send_slack_announcement":
+                send_slack_announcement.invoke(args)
+                tool_result = "Message sent."
+            elif fn == "check_project_status":
+                tool_result = check_project_status.invoke(args)
+            elif fn == "schedule_meeting_tool":
+                tool_result = schedule_meeting_tool.invoke(args)
+                # ✅ FIX: Only return immediately if it was a BOOKING (Success/Error).
+                # If it was a CHECK (Available/Busy), let the loop continue so AI can ask the user.
+                if "✅ Available" in str(tool_result) or "⚠️ BUSY" in str(tool_result):
+                    pass 
+                else:
+                    return str(tool_result), approval_required
+            elif fn == "heal_project_schedule":
+                tool_result = heal_project_schedule.invoke(args)
+            if fn == "consult_project_memory":
+                # ✅ INJECT USERNAME (AI doesn't provide this, we do)
+                args["username"] = username 
+                tool_result = consult_project_memory.invoke(args)
+                tool_result = f"Memory Findings: {tool_result}"
+
+            # Append result to context so AI knows what happened
+            context_messages.append(HumanMessage(content=str(tool_result)))
+            
+            # Update final text fallback
+            # ✅ FIX: Do not show raw memory logs to the user. 
+            # Only update final_text if it's NOT a memory search.
+            if fn not in ["consult_project_memory", "check_project_status"]:
+                final_text = str(tool_result)
+        # Ask AI again with the tool outputs
+        current_response = llm_with_tools.invoke(context_messages)
+        if current_response.content:
+            final_text = current_response.content
+            
+    return final_text, approval_required
+
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...), username: str = Depends(get_current_user)):
+    """
+    Autonomous Trigger: Uploads doc, embeds it, and forces AI to analyze it.
+    TAGS the data with the current username so others can't see it.
+    """
+    try:
+        # 1. Read File
+        content = await file.read()
+        text = content.decode("utf-8")
+        
+        # 2. Embed into Pinecone
+        chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
+        vectors = []
+        for i, chunk in enumerate(chunks):
+            embedding = generate_embedding(chunk)
+            vectors.append({
+                "id": f"{username}_{file.filename}_part_{i}", 
+                "values": embedding,
+                "metadata": {"text": chunk, "source": file.filename, "username": username}
+            })
+        
+        memory_index.upsert(vectors=vectors)
+        
+        # 3. AUTONOMOUS TRIGGER
+        system_trigger = f"""
+        SYSTEM_EVENT: User uploaded '{file.filename}'. 
+        Action Required:
+        1. Read the document content from memory to understand the context.
+        2. Do NOT output the raw content.
+        3. Do NOT generate a plan yet.
+        4. Simply reply: "✅ I have processed {file.filename} and stored it in memory. I am ready to use this context when you ask."
+        """
+        
+        # Save User's System Trigger
+        save_chat_message("system_upload", "user", system_trigger)
+        
+        # 4. INVOKE & EXECUTE
+        messages = [HumanMessage(content=system_trigger)]
+        response = llm_with_tools.invoke(messages)
+        
+        final_reply, approval_required = process_tool_calls(response, messages, username)
+        
+        # ✅ ADD THIS LINE BACK (Saves the AI's reply to history)
+        save_chat_message("system_upload", "ai", str(final_reply))
+        
+        return {"status": "processed", "reply": final_reply, "approval_required": approval_required}
+
+    except Exception as e:
+        print(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     try:
@@ -1030,87 +1352,37 @@ def get_employees():
     return list(employees_collection.find({}, {"_id": 0}))
 
 @app.post("/chat")
-def chat_endpoint(req: UserRequest):
-    chat_history.append(HumanMessage(content=req.message))
-    response = llm_with_tools.invoke(chat_history)
-    final = response.content
-    approval = False
-    plan_staged = False
+def chat_endpoint(req: UserRequest, username: str = Depends(get_current_user)):
+    # 1. Save User Message
+    save_chat_message(req.session_id, "user", req.message)
+    
+    # 2. Load History
+    context_messages = get_chat_history(req.session_id, limit=5)
+    
+    # 3. Invoke AI
+    response = llm_with_tools.invoke(context_messages)
+    
+    # 4. Process Tools (✅ PASS USERNAME HERE)
+    final_text, approval_required = process_tool_calls(response, context_messages, username)
+    
+    # 5. Save AI Reply
+    save_chat_message(req.session_id, "ai", str(final_text))
+    
+    return {"reply": final_text, "approval_required": approval_required}
 
-    # ✅ NEW: specific set to track tools run in this turn
-    executed_tool_names = set()
+@app.get("/chat/history/{session_id}")
+def get_full_history(session_id: str):
+    """Returns the full chat history for the UI."""
+    try:
+        # Fetch all messages for this session, sorted oldest to newest
+        history = list(chats_collection.find(
+            {"session_id": session_id}, 
+            {"_id": 0, "role": 1, "content": 1, "timestamp": 1}
+        ).sort("timestamp", 1))
+        return history
+    except Exception as e:
+        return {"error": str(e)}
 
-    if response.tool_calls:
-        # First handle any plan calls first (so we stage instead of creating)
-        for tc in response.tool_calls:
-            if tc["name"] == "execute_project_plan":
-                res = execute_project_plan.invoke(tc["args"])
-                if res == "PLAN_STAGED":
-                    plan_staged = True
-                    if pending_plan:
-                        preview_lines = [f"• {t.get('name')} → {t.get('owner')}" for t in pending_plan["tasks"]]
-                        budget_info = pending_plan.get("budget_summary", "")
-                        final = (
-                            f"I have drafted a plan:\n"
-                            f"{budget_info}\n\n"
-                            f"{chr(10).join(preview_lines)}\n\n"
-                            f"Proceed?"
-                        )
-                        approval = True
-                    else:
-                        final = "Plan generated. Proceed?"
-                        approval = True
-                else:
-                    final = res
-                break
-
-        # If not staging a plan, run other tools
-        if not plan_staged:
-            for tc in response.tool_calls:
-                fn = tc["name"]
-                args = tc["args"]
-
-                # ✅ FIX: Prevent duplicate scheduling in the same turn
-                if fn == "schedule_meeting_tool" and fn in executed_tool_names:
-                    print("⚠️ Skipping duplicate schedule call")
-                    continue
-                
-                # Add to set
-                executed_tool_names.add(fn)
-
-                if fn == "create_task_in_trello":
-                    final = create_task_in_trello.invoke(args)
-                elif fn == "send_slack_announcement":
-                    # ✅ OPTIONAL: Prevent double announcement if we just scheduled a meeting
-                    # (Since schedule_meeting_tool already sends a slack msg)
-                    if "schedule_meeting_tool" in executed_tool_names:
-                         print("⚠️ Skipping announcement (Meeting tool handles it)")
-                         continue
-                    send_slack_announcement.invoke(args)
-                    final = "Message sent."
-                elif fn == "check_project_status":
-                    final = check_project_status.invoke(args)
-                elif fn == "schedule_meeting_tool":
-                    final = schedule_meeting_tool.invoke(args)
-                elif fn == "heal_project_schedule":
-                    final = heal_project_schedule.invoke(args)
-                elif fn == "consult_project_memory":
-                    res = consult_project_memory.invoke(args)
-                    chat_history.append(response)
-                    chat_history.append(HumanMessage(content=f"Memory: {res}"))
-                    follow = llm_with_tools.invoke(chat_history)
-                    final = follow.content
-                    if follow.tool_calls:
-                        for tc_follow in follow.tool_calls:
-                            if tc_follow["name"] == "execute_project_plan":
-                                execute_project_plan.invoke(tc_follow["args"])
-                                if pending_plan:
-                                    preview = "\n".join([f"• {t['name']} → {t['owner']}" for t in pending_plan["tasks"]])
-                                    final = f"Based on our records, I drafted a plan:\n\n{preview}\n\nProceed?"
-                                    approval = True
-
-    chat_history.append(response)
-    return {"reply": final, "approval_required": approval}
 @app.post("/approve")
 def approve_plan():
     global pending_plan
@@ -1155,16 +1427,20 @@ def approve_plan():
 
 
 @app.post("/reject")
-def reject_plan():
+def reject_plan(req: Optional[RejectRequest] = None): # <--- Make it Optional
     global pending_plan, current_budget_warning, current_risks
     
     # 2. Clear the plan and the specific warning string
     pending_plan = None
     current_budget_warning = "" 
     
-    # 3. ✅ ADD THIS: Force refresh the risk list immediately
-    # This runs the logic that rebuilds the list. Since current_budget_warning 
-    # is now empty, the new list will NOT have the red alert.
+    # Handle the reason safely
+    reason_text = req.reason if req else "User rejected the plan (No reason given)."
+    
+    # Feedback: Log why it was rejected so the AI context knows
+    save_chat_message("system_plan_management", "user", f"❌ I rejected the plan. Reason: {reason_text}")
+
+    # 3. Force refresh the risk list immediately
     check_project_status.invoke({"dummy": "refresh"})
     
     return {"status": "Cancelled"}

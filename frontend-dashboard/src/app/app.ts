@@ -15,9 +15,12 @@ export class App implements OnInit, AfterViewChecked {
   @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
 
   isAuthenticated: boolean = false;
-  // ✅ ADDED: Track Login vs Sign Up mode
-  isLoginMode: boolean = true; 
+  isLoginMode: boolean = true;
   
+  // ✅ 1. MULTI-CHAT VARIABLES
+  sessionId: string = ''; 
+  savedSessions: { id: string, label: string }[] = []; 
+
   currentView: 'chat' | 'settings' = 'chat';
   userMessage: string = '';
   chatHistory: { sender: string, text: string }[] = [];
@@ -25,7 +28,6 @@ export class App implements OnInit, AfterViewChecked {
   employees: any[] = [];
   
   loginData = { username: '', password: '' };
-  // Added 'rate' with a default of 50
   newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
   
   isLoading: boolean = false;
@@ -35,18 +37,116 @@ export class App implements OnInit, AfterViewChecked {
 
   ngOnInit() {
     this.isAuthenticated = this.aiService.isLoggedIn();
+    
+    // ✅ ADD THIS BLOCK: Recover username from storage
+    const storedUser = localStorage.getItem('current_user');
+    if (storedUser) {
+      this.loginData.username = storedUser;
+    }
+
     if (this.isAuthenticated) this.initDashboard();
   }
 
-  // --- AUTHENTICATION LOGIC (UPDATED) ---
+  // ✅ 2. INIT DASHBOARD (Loads Chat List)
+  initDashboard() {
+    this.loadSessionList(); // Load past chats from browser
+    
+    // If no chats exist, create the first one automatically
+    if (this.savedSessions.length === 0) {
+      this.startNewChat(); 
+    } else {
+      // Otherwise, load the most recent conversation
+      this.selectSession(this.savedSessions[0]);
+    }
 
-  // 1. Switch between Login and Sign Up views
-  toggleAuthMode() {
-    this.isLoginMode = !this.isLoginMode;
-    this.loginData = { username: '', password: '' }; // Clear inputs
+    this.fetchRisks();
+    this.loadEmployees();
   }
 
-  // 2. Main Auth Handler (Connects to HTML button)
+  // ✅ 3. START NEW CHAT Logic
+  startNewChat() {
+    const timestamp = new Date().getTime();
+    // Create unique ID: "session-username-123456"
+    const newId = `session-${this.loginData.username}-${timestamp}`;
+    
+    const newSession = { 
+      id: newId, 
+      label: `Chat ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` 
+    };
+
+    this.savedSessions.unshift(newSession); // Add to top of list
+    this.saveSessionList(); // Save to LocalStorage
+    this.selectSession(newSession); // Switch to it
+  }
+
+  // ✅ 4. SWITCH CHAT Logic (Updated)
+  selectSession(session: any) {
+    // 🔥 FIX: Force the screen to switch back to 'chat' view
+    this.switchView('chat'); 
+
+    this.sessionId = session.id;
+    this.chatHistory = []; // Clear screen immediately
+    this.isLoading = true;
+
+    // Fetch history from Backend
+    this.aiService.getChatHistory(this.sessionId).subscribe({
+      next: (history: any[]) => {
+        this.chatHistory = history.map(msg => ({
+          sender: msg.role === 'user' ? 'You' : 'AI Agent',
+          text: msg.content
+        }));
+        this.isLoading = false;
+        setTimeout(() => this.scrollToBottom(), 100);
+      },
+      error: (err: any) => { 
+        console.error('Failed to load history', err);
+        this.isLoading = false;
+      }
+    });
+  }
+
+  // ✅ 5. LOCAL STORAGE HELPERS
+  saveSessionList() {
+    localStorage.setItem('user_sessions_' + this.loginData.username, JSON.stringify(this.savedSessions));
+  }
+
+  loadSessionList() {
+    const data = localStorage.getItem('user_sessions_' + this.loginData.username);
+    if (data) {
+      this.savedSessions = JSON.parse(data);
+    }
+  }
+
+  // --- FILE UPLOAD ---
+  onFileSelected(event: any) {
+    const file: File = event.target.files[0];
+    if (file) {
+      this.isLoading = true;
+      this.chatHistory.push({ sender: 'You', text: `📂 Uploading: ${file.name}...` });
+
+      this.aiService.uploadFile(file).subscribe({
+        next: (res: any) => {
+          this.isLoading = false;
+          this.chatHistory.push({ sender: 'AI Agent', text: res.reply });
+          if (res.approval_required) {
+            this.showApprovalButtons = true;
+          }
+        },
+        error: (err) => {
+          this.isLoading = false;
+          this.chatHistory.push({ sender: 'System', text: '❌ Upload Failed.' });
+          console.error(err);
+        }
+      });
+    }
+  }
+
+  // --- AUTHENTICATION ---
+  toggleAuthMode() {
+    this.isLoginMode = !this.isLoginMode;
+    this.loginData = { username: '', password: '' };
+  }
+
   onAuthAction() {
     if (!this.loginData.username || !this.loginData.password) {
       alert('⚠️ Please enter both username and password');
@@ -54,7 +154,6 @@ export class App implements OnInit, AfterViewChecked {
     }
 
     if (this.isLoginMode) {
-      // --- LOGIN ---
       this.aiService.login(this.loginData.username, this.loginData.password).subscribe({
         next: () => { 
           this.isAuthenticated = true; 
@@ -63,11 +162,10 @@ export class App implements OnInit, AfterViewChecked {
         error: () => alert('❌ Invalid Credentials!')
       });
     } else {
-      // --- REGISTER (New Logic) ---
       this.aiService.register(this.loginData.username, this.loginData.password).subscribe({
         next: () => { 
           alert('✅ Account Created! Please login.');
-          this.isLoginMode = true; // Switch back to login screen
+          this.isLoginMode = true; 
         },
         error: (err) => {
           if (err.status === 400) alert('⚠️ Username already exists.');
@@ -77,10 +175,14 @@ export class App implements OnInit, AfterViewChecked {
     }
   }
 
-  // --- EXISTING LOGIC BELOW (UNCHANGED) ---
+  onLogout() { 
+    this.aiService.logout(); 
+    this.isAuthenticated = false; 
+    this.chatHistory = []; 
+    this.savedSessions = []; // Clear sessions on logout
+  }
 
-  onLogout() { this.aiService.logout(); this.isAuthenticated = false; this.chatHistory = []; }
-
+  // --- CORE UI HELPERS ---
   formatText(text: string): SafeHtml {
     let formatted = text
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') 
@@ -88,16 +190,11 @@ export class App implements OnInit, AfterViewChecked {
     return this.sanitizer.bypassSecurityTrustHtml(formatted);
   }
 
-  initDashboard() {
-    this.fetchRisks();
-    this.loadEmployees();
-    this.scrollToBottom();
-  }
-
   ngAfterViewChecked() { this.scrollToBottom(); }
   scrollToBottom() { try { this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight; } catch(err) { } }
   switchView(view: 'chat' | 'settings') { this.currentView = view; }
 
+  // ✅ 6. SEND MESSAGE (Updated to use Session ID)
   sendMessage() {
     if (!this.userMessage.trim()) return;
     this.chatHistory.push({ sender: 'You', text: this.userMessage });
@@ -106,7 +203,8 @@ export class App implements OnInit, AfterViewChecked {
     this.isLoading = true; 
     this.showApprovalButtons = false;
 
-    this.aiService.sendMessage(msg).subscribe({
+    // Sending with Session ID
+    this.aiService.sendMessage(msg, this.sessionId).subscribe({
       next: (res: any) => {
         this.chatHistory.push({ sender: 'AI Agent', text: res.reply });
         this.isLoading = false;
@@ -120,6 +218,7 @@ export class App implements OnInit, AfterViewChecked {
     });
   }
 
+  // --- EMPLOYEE & RISKS ---
   loadEmployees() { this.aiService.getEmployees().subscribe(data => this.employees = data); }
 
   addEmployee() {
@@ -130,13 +229,11 @@ export class App implements OnInit, AfterViewChecked {
 
     const empData = {
       ...this.newEmp,
-      // Handle skills split safely
       skills: typeof this.newEmp.skills === 'string' 
         ? (this.newEmp.skills as string).split(',') 
         : this.newEmp.skills
     };
 
-    // We now pass 'this.newEmp.rate' as the last argument
     this.aiService.addEmployee(
       empData.name, 
       empData.role, 
@@ -146,7 +243,6 @@ export class App implements OnInit, AfterViewChecked {
     ).subscribe({
       next: (res) => {
         alert(res.msg);
-        // Reset form (including rate reset to 50)
         this.newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
         this.loadEmployees();
       },
@@ -168,12 +264,6 @@ export class App implements OnInit, AfterViewChecked {
   
   onReject() {
     this.showApprovalButtons = false;
-    this.aiService.rejectPlan().subscribe(() => {
-      // 1. Show cancellation message
-      this.chatHistory.push({ sender: 'System', text: '❌ Plan Cancelled.' });
-      
-      //Refresh the sidebar immediately
-      this.fetchRisks(); 
-    });
+    this.aiService.rejectPlan().subscribe(() => this.chatHistory.push({ sender: 'System', text: '❌ Plan Cancelled.' }));
   }
 }
