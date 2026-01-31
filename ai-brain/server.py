@@ -508,10 +508,6 @@ You are an Intelligent AI Project Manager.
    - Always assign tasks to the RIGHT PERSON based on skills.
    - Use the roster above to decide.
 
-5. **OUTPUT FORMAT**
-   - DO NOT use XML tags like <function>.
-   - ALWAYS call tools using JSON ONLY.
-   - Tool inputs must be valid JSON inside the tool call.
 ===========================
 RULES & OUTPUT
 ===========================
@@ -521,35 +517,14 @@ Every task MUST include:
 - deadline
 - focus_time (1-hour slot)
 
-- IF user asks to "Plan", "Design", "Build": call execute_project_plan and produce mutiple subtasks.
+- IF user asks to "Plan", "Design", "Build": call execute_project_plan and produce multiple subtasks.
 - Assign owners using the team roster or DEFAULT_OWNER fallback.
-- ALWAYS call tools using JSON only when invoked.
 - Always think step-by-step.
 - Always choose the correct tool.
 - Never mix complex plans with simple tasks.
-- Ensure clean JSON formatting.
 - MEMORY USAGE:
   - If you use 'consult_project_memory', do NOT output the raw "Memory Findings".
   - Read the findings silently, then formulate a natural language answer for the user based on that data.
-
-===========================
-🛑  STRICT JSON RULE
-===========================
-
-When calling a tool:
-
-- The FULL reply must be ONLY a JSON object.
-- Do NOT add explanations, descriptions, or natural language.
-- Do NOT wrap JSON in backticks.
-- Do NOT include text before or after JSON.
-- Output EXACTLY:
-
-{{
-    "tool_name": "<tool_name>",
-    "arguments": "..."
-}}
-
-If you are not calling a tool, output normal text.
 """
     # This line MUST be indented to be part of the function
     chat_history = [SystemMessage(content=prompt)]
@@ -698,7 +673,7 @@ def send_slack_announcement(message: str):
 
 @tool
 def consult_project_memory(query: str, username: str = "placeholder"):
-    """Searches project documentation in the vector database."""
+    """Searches project documentation in the vector database. Do not provide username."""
     try:
         v = generate_embedding(query)
         # HF sometimes returns [[...]] or [...]
