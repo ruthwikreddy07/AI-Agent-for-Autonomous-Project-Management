@@ -619,9 +619,21 @@ def internal_create_trello(name, desc, owner, start_hour=10,specific_due_date=No
     label_id = ""
     is_urgent = False
     name_lower = name.lower()
+
+    # Check urgency independently of label logic
+    if any(x in name_lower for x in ("critical", "urgent", "crash", "alert")): is_urgent = True
+
+    # Fallback: If urgent but no email found (e.g. Unassigned), try default owner
+    if is_urgent and not emp_email:
+        def_owner = get_default_owner()
+        if def_owner and def_owner != "Unassigned":
+            try:
+                def_emp = employees_collection.find_one({"name": {"$regex": f"^{def_owner}$", "$options": "i"}})
+                if def_emp: emp_email = def_emp.get("email", "")
+            except: pass
+
     if "bug" in name_lower or "fix" in name_lower:
         label_id = TRELLO_LABELS.get("bug", "")
-        if any(x in name_lower for x in ("critical", "urgent", "crash")): is_urgent = True
     elif "feature" in name_lower:
         label_id = TRELLO_LABELS.get("feature", "")
 
