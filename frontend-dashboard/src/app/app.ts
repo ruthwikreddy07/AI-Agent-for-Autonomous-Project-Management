@@ -3,7 +3,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AiService } from './ai.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { HttpClient } from '@angular/common/http'; // <--- 1. ADD THIS IMPORT
 
+// Keep your helper function here (outside the class)
+const isSameDay = (d1: Date, d2: Date) => {
+  return d1.getFullYear() === d2.getFullYear() &&
+         d1.getMonth() === d2.getMonth() &&
+         d1.getDate() === d2.getDate();
+};
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -20,6 +27,8 @@ export class App implements OnInit, AfterViewChecked {
   // ✅ 1. MULTI-CHAT VARIABLES
   sessionId: string = ''; 
   savedSessions: { id: string, label: string }[] = []; 
+  // ✅ NEW: Holds the organized list for the UI
+  groupedSessions: { label: string, sessions: any[] }[] = []; 
 
   currentView: 'chat' | 'settings' = 'chat';
   userMessage: string = '';
@@ -33,12 +42,16 @@ export class App implements OnInit, AfterViewChecked {
   isLoading: boolean = false;
   showApprovalButtons: boolean = false;
 
-  constructor(private aiService: AiService, private sanitizer: DomSanitizer) {}
+  constructor(
+    private aiService: AiService, 
+    private sanitizer: DomSanitizer,
+    private http: HttpClient 
+  ) {}
 
   ngOnInit() {
     this.isAuthenticated = this.aiService.isLoggedIn();
     
-    // ✅ ADD THIS BLOCK: Recover username from storage
+    // Recover username from storage
     const storedUser = localStorage.getItem('current_user');
     if (storedUser) {
       this.loginData.username = storedUser;
@@ -47,9 +60,9 @@ export class App implements OnInit, AfterViewChecked {
     if (this.isAuthenticated) this.initDashboard();
   }
 
-  // ✅ 2. INIT DASHBOARD (Loads Chat List)
+  // ✅ 2. INIT DASHBOARD
   initDashboard() {
-    this.loadSessionList(); // Load past chats from browser
+    this.loadSessionList(); // Load past chats
     
     // If no chats exist, create the first one automatically
     if (this.savedSessions.length === 0) {
@@ -75,20 +88,18 @@ export class App implements OnInit, AfterViewChecked {
     };
 
     this.savedSessions.unshift(newSession); // Add to top of list
-    this.saveSessionList(); // Save to LocalStorage
-    this.selectSession(newSession); // Switch to it
+    this.saveSessionList(); 
+    this.selectSession(newSession); 
   }
 
-  // ✅ 4. SWITCH CHAT Logic (Updated)
+  // ✅ 4. SWITCH CHAT Logic
   selectSession(session: any) {
-    // 🔥 FIX: Force the screen to switch back to 'chat' view
     this.switchView('chat'); 
 
     this.sessionId = session.id;
     this.chatHistory = []; // Clear screen immediately
     this.isLoading = true;
 
-    // Fetch history from Backend
     this.aiService.getChatHistory(this.sessionId).subscribe({
       next: (history: any[]) => {
         this.chatHistory = history.map(msg => ({
@@ -105,15 +116,80 @@ export class App implements OnInit, AfterViewChecked {
     });
   }
 
-  // ✅ 5. LOCAL STORAGE HELPERS
+  // ✅ 5. LOCAL STORAGE & GROUPING HELPERS
   saveSessionList() {
     localStorage.setItem('user_sessions_' + this.loginData.username, JSON.stringify(this.savedSessions));
+    this.groupSessions(); // Update UI immediately after saving
   }
 
   loadSessionList() {
     const data = localStorage.getItem('user_sessions_' + this.loginData.username);
     if (data) {
       this.savedSessions = JSON.parse(data);
+    }
+    this.groupSessions(); // ✅ Call the grouping logic here
+  }
+
+  // ✅ NEW: Groups sessions into Today/Yesterday
+  groupSessions() {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const groups: { [key: string]: any[] } = {
+      "Today": [],
+      "Yesterday": []
+    };
+
+    // Sort: Newest first
+    this.savedSessions.sort((a: any, b: any) => {
+      const timeA = parseInt(a.id.split('-').pop() || '0');
+      const timeB = parseInt(b.id.split('-').pop() || '0');
+      return timeB - timeA;
+    });
+
+    this.savedSessions.forEach(session => {
+      const timestamp = parseInt(session.id.split('-').pop() || '0');
+      const date = new Date(timestamp);
+
+      if (isSameDay(date, today)) {
+        groups["Today"].push(session);
+      } else if (isSameDay(date, yesterday)) {
+        groups["Yesterday"].push(session);
+      } else {
+        const dateKey = date.toLocaleDateString('en-GB'); // e.g. 30/01/2025
+        if (!groups[dateKey]) groups[dateKey] = [];
+        groups[dateKey].push(session);
+      }
+    });
+
+    // Flatten into an array for the HTML loop
+    this.groupedSessions = Object.keys(groups)
+      .filter(key => groups[key].length > 0)
+      .map(key => ({ label: key, sessions: groups[key] }));
+  }
+
+  // ✅ NEW: Deletes a session
+  deleteSession(event: Event, sessionId: string) {
+    event.stopPropagation(); // Prevents clicking the chat row
+    if(!confirm("Delete this chat history?")) return;
+
+    // Remove from local array
+    this.savedSessions = this.savedSessions.filter(s => s.id !== sessionId);
+    this.saveSessionList(); // This triggers grouping automatically
+
+    // Send delete request to backend
+    // Access apiUrl from aiService (ensure apiUrl is public in service or use a getter)
+    const apiUrl = this.aiService['apiUrl']; 
+    this.http.delete(`${apiUrl}/chat/history/${sessionId}`).subscribe();
+
+    // If we deleted the active chat, switch to another one
+    if (this.sessionId === sessionId) {
+      if (this.savedSessions.length > 0) {
+        this.selectSession(this.savedSessions[0]);
+      } else {
+        this.startNewChat();
+      }
     }
   }
 
@@ -179,7 +255,7 @@ export class App implements OnInit, AfterViewChecked {
     this.aiService.logout(); 
     this.isAuthenticated = false; 
     this.chatHistory = []; 
-    this.savedSessions = []; // Clear sessions on logout
+    this.savedSessions = []; 
   }
 
   // --- CORE UI HELPERS ---
@@ -194,7 +270,7 @@ export class App implements OnInit, AfterViewChecked {
   scrollToBottom() { try { this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight; } catch(err) { } }
   switchView(view: 'chat' | 'settings') { this.currentView = view; }
 
-  // ✅ 6. SEND MESSAGE (Updated to use Session ID)
+  // ✅ 6. SEND MESSAGE
   sendMessage() {
     if (!this.userMessage.trim()) return;
     this.chatHistory.push({ sender: 'You', text: this.userMessage });

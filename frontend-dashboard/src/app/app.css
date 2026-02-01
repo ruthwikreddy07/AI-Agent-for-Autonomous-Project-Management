@@ -98,6 +98,9 @@
   display: flex;
   flex-direction: column;
   padding: 24px;
+  height: 100vh;          /* 🔥 Force full height of viewport */
+  box-sizing: border-box; /* Ensure padding doesn't add to height */
+  overflow: hidden;       /* Prevent sidebar itself from scrolling */
 }
 
 .logo {
@@ -397,9 +400,12 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  overflow-y: auto; 
-  max-height: 40vh; 
-  margin-bottom: 10px;
+  
+  flex: 1;                /* 🔥 Take up all remaining space */
+  overflow-y: auto;       /* 🔥 Enable scrolling ONLY for this list */
+  min-height: 0;          /* Crucial for flex scrolling */
+  
+  margin-bottom: 20px;    /* Space before "Team & Roles" */
   padding-right: 5px; 
 }
 
@@ -425,3 +431,47 @@
 /* Custom Scrollbar for the list */
 .session-list::-webkit-scrollbar { width: 4px; }
 .session-list::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+/* Session Item Layout */
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  padding-right: 30px; /* Make space for bin icon */
+}
+
+/* Delete Icon Styles */
+.delete-icon {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  opacity: 0; /* Hidden by default */
+  position: absolute;
+  right: 10px;
+  transition: opacity 0.2s, color 0.2s;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.delete-icon:hover {
+  color: #ef4444; /* Red on hover */
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Show icon when hovering the row */
+.session-item:hover .delete-icon {
+  opacity: 1;
+}
+
+/* Group Headers */
+.session-label {
+  margin-top: 15px;
+  margin-bottom: 5px;
+  padding-left: 10px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
