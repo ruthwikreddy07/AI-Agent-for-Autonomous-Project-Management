@@ -470,11 +470,12 @@ You are an Intelligent AI Project Manager.
     - Example: "Build API" depends on ["Design Database"].
     - "tool_cost" is optional: Estimate price of tools/software/vendors (e.g., 50 for a license).
     - Argument 'goal': Short description of the project.
-    - Argument 'budget': STRICTLY extract the dollar amount from the prompt.
-    - 🛑 IF NO CURRENCY AMOUNT IS MENTIONED: You MUST pass 0. 
-    - 🛑 DO NOT GUESS. DO NOT DEFAULT TO 1000.
-    - If unsure, pass 0.
-    - DO NOT GUESS. DO NOT ASSUME. Default is 0.
+    - Argument 'budget': 
+      - 🛑 STRICTLY extract the dollar amount from the user's prompt.
+      - 🛑 IF NO CURRENCY AMOUNT IS MENTIONED IN THE CHAT: You MUST pass 0.
+      - 🛑 DO NOT GUESS. DO NOT DEFAULT TO 1000 or 10000.
+      - 🛑 DO NOT infer budget from document content unless explicitly told to "use the budget from the document".
+      - If unsure, pass 0.
     - Argument 'tasks': A valid JSON string array of tasks.
     - **CRITICAL**: The 'tasks' argument MUST be a valid JSON string array
     - Every task MUST include:
@@ -791,6 +792,7 @@ def execute_project_plan(goal: str, tasks: str | list, budget: float = 0):
     global pending_plan, current_budget_warning
     try:
         print(f"🧐 DEBUG RAW AI INPUT: {tasks}")
+        print(f"💰 DEBUG BUDGET INPUT: {budget}")
         if isinstance(tasks, str):
             try:
                 raw_data = json.loads(tasks)
