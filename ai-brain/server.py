@@ -490,10 +490,13 @@ You are an Intelligent AI Project Manager.
 
 2️⃣  **create_task_in_trello**
     - Use ONLY for simple, single tasks.
+    - Use this if the user reports a "bug", "issue", or asks to "send an email about a critical issue" (This triggers an urgent alert).
 
 3️⃣  schedule_meeting_tool
     - 🚨 **HIGHEST PRIORITY**: If the user input contains "Schedule", "Book", or "Set up meeting", you MUST use this tool.
     - 🛑 **IF NO TIME IS PROVIDED**: Do NOT call the tool. Reply: "When would you like to schedule the meeting?"
+    - 🛑 DO NOT use this tool for "sending emails" or "reporting bugs".
+    - 🛑 DO NOT GUESS THE TIME.
     - 🛑 IGNORE the "Topic" for tool selection. (e.g., if user says "Schedule a meeting about Development", do NOT check development status. Just book the meeting).
     - 🛑 STEP 1: ALWAYS call with `action="check"` FIRST (never skip this step).
     - 🛑 STEP 2: Process the tool response:
@@ -502,11 +505,15 @@ You are an Intelligent AI Project Manager.
       - Both responses include instructions on what to do next - FOLLOW THEM.
     - 🛑 STEP 3 (CRITICAL): 
       - If the user says "YES" (or "book it", "sure", "ok") after you suggested a time:
-      - **YOU MUST CALL THE TOOL `schedule_meeting_tool`**.
-      - Arguments: `action="book"`, `start_time="THE_ISO_TIME"`, `summary="The Meeting Title"`.
-      - **DO NOT** use `send_slack_announcement` for this.
-      - 🛑 The tool AUTOMATICALLY notifies Slack. **DO NOT** call `send_slack_announcement`.
-      - **DO NOT** just reply with text.
+        - **YOU MUST CALL THE TOOL `schedule_meeting_tool`**.
+        - Arguments: `action="book"`, `start_time="THE_ISO_TIME"`, `summary="The Meeting Title"`.
+        - **DO NOT** use `send_slack_announcement` for this.
+        - 🛑 The tool AUTOMATICALLY notifies Slack. **DO NOT** call `send_slack_announcement`.
+        - **DO NOT** just reply with text.
+      - If the user says "NO", "Cancel", or "Don't":
+        - Simply reply: "Okay, request cancelled."
+        - **DO NOT** call any tools.
+        - **DO NOT** try to find another time unless asked.
 
 
 4️⃣  **check_project_status**
@@ -722,6 +729,7 @@ def send_slack_announcement(message: str):
     Use this ONLY for general project announcements.
     🛑 DO NOT use this to confirm meetings.
     🛑 DO NOT use this to confirm task creation.
+    🛑 DO NOT use this if the user is rejecting a proposal.
     """
     try:
         requests.post(N8N_SLACK_URL, json={"message": message}, timeout=5)
@@ -764,7 +772,7 @@ def schedule_meeting_tool(start_time: str, summary: str = "General Meeting", des
     if action == "check":
         is_free, msg = check_availability(start_time)
         if is_free:
-            return f"✅ Available. The time {start_time} is free. Ask the user if they want to book it."
+            return f"Good news! The {start_time} slot is available. Would you like me to book that for you?"
         else:
             # Try to find next slot
             found, next_iso, readable, _ = find_next_free_slot(start_time)
