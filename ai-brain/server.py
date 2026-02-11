@@ -82,31 +82,26 @@ HF_API_URL = "https://router.huggingface.co/models/sentence-transformers/all-Min
 # EMBEDDING CONFIGURATION (GOOGLE GEMINI)
 # ---------------------------
 # Make sure GOOGLE_API_KEY is in your .env file
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-if not GOOGLE_API_KEY:
-    print("⚠️ WARNING: GOOGLE_API_KEY is missing. Embeddings will fail.")
-else:
-    genai.configure(api_key=GOOGLE_API_KEY)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def generate_embedding(text: str):
-    """
-    Generates embeddings using Google Gemini (Free Tier).
-    Output Dimension: 768
-    """
-    try:
-        # Use the latest stable embedding model
-        result = genai.embed_content(
-            model="models/embedding-001",
-            content=text,
-            task_type="retrieval_document" 
-        )
-        return result['embedding']
-    except Exception as e:
-        print(f"❌ Google Embedding Error: {e}")
-        # Return a zero-vector fallback to prevent server crash, 
-        # allowing the user to see the error in logs without 500ing immediately.
-        raise RuntimeError(f"Google API Error: {str(e)}")
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(
+        "https://api.openai.com/v1/embeddings",
+        headers=headers,
+        json={
+            "model": "text-embedding-3-small",
+            "input": text
+        }
+    )
+
+    response.raise_for_status()
+    return response.json()["data"][0]["embedding"]
+
 # durations for due date heuristics
 DURATION_RULES = {"ui": 3, "design": 3, "api": 5, "database": 4, "test": 2, "deploy": 1, "fix": 1, "meeting": 0}
 
