@@ -20,7 +20,6 @@ export class TeamComponent implements OnInit {
   isEditing = false; // 🚀 Track if we are editing or adding
   newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
 
-  constructor(private aiService: AiService) {}
 
   ngOnInit() { this.loadEmployees(); }
 
