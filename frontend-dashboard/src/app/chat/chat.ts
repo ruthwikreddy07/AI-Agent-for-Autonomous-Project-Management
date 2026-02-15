@@ -4,6 +4,7 @@ import { AiService } from '../ai.service'; // 👈 FIXED PATH
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { HttpClient } from '@angular/common/http'; 
 import { Router } from '@angular/router';
+import { NgZone } from '@angular/core'; // 🚀 Add this
 
 const isSameDay = (d1: Date, d2: Date) => {
   return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
@@ -43,7 +44,8 @@ chatHistory: { sender: string, text: string, html?: SafeHtml }[] = [];
     private aiService: AiService, 
     private sanitizer: DomSanitizer,
     private http: HttpClient,
-    private router: Router
+    private router: Router,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit() {
@@ -226,9 +228,11 @@ ngAfterViewChecked() {
 }
   
   scrollToBottom() { try { this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight; } catch(err) { } }
-  goBack() { 
-    this.router.navigate(['/dashboard']); 
-  }
+  goBack() {
+  this.ngZone.run(() => {
+    this.router.navigate(['/dashboard']);
+  });
+}
   switchView(view: 'chat' | 'settings') { this.currentView = view; }
 
   sendMessage() {

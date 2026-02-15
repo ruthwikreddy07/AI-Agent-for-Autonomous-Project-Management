@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Chart, registerables, ChartConfiguration, ChartOptions } from 'chart.js';
 import { Component, OnInit, Output, EventEmitter, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { AiService } from '../ai.service';
+import { ChangeDetectorRef } from '@angular/core';
 
 
 Chart.register(...registerables);
@@ -37,7 +38,7 @@ stats = {
   private lineChart!: Chart;
   private donutChart!: Chart;
   trelloUrl: string = ''; // 🚀 Variable to store the link
-  constructor(private aiService: AiService) {} // 👈 Added AiService injection
+  constructor(private cdr: ChangeDetectorRef,private aiService: AiService) {} // 👈 Added AiService injection
 
   ngOnInit(): void {
     // 👈 Added this function call to fetch real data on load
@@ -93,6 +94,7 @@ stats = {
         ];
         this.donutChart.update();
       }
+      this.cdr.detectChanges();
     },
     error: (err: any) => console.error('❌ Failed to fetch backend data:', err)
   });

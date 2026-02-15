@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AiService } from '../ai.service';
 import { Router } from '@angular/router';
+import { NgZone } from '@angular/core'; // 🚀 Add this
 
 @Component({
   selector: 'app-team',
@@ -12,7 +13,7 @@ import { Router } from '@angular/router';
   styleUrls: ['./team.css']
 })
 export class TeamComponent implements OnInit {
-  constructor(private aiService: AiService, private router: Router) {}
+  constructor(private aiService: AiService, private router: Router,private ngZone: NgZone ) {}
   
   
   employees: any[] = [];
@@ -51,8 +52,10 @@ export class TeamComponent implements OnInit {
     }
   }
   goBack() {
+  this.ngZone.run(() => {
     this.router.navigate(['/dashboard']);
-  }
+  });
+}
 
   // 🚀 Unified Save logic
   saveEmployee() {
