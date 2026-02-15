@@ -122,7 +122,7 @@ allowed_origins = [
 # optionally allow all in dev; in production prefer explicit origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins + ["*"],  # keep '*' if Render frontend domain dynamic; remove for strict prod
+    allow_origins=allowed_origins,  # keep '*' if Render frontend domain dynamic; remove for strict prod
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
