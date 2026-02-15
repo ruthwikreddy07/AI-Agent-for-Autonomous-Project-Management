@@ -3,6 +3,10 @@ import os
 import json
 import requests
 import time as time_module
+from typing import List, Dict, Any
+from collections import Counter, defaultdict  # Needed for counting tasks
+from pydantic import BaseModel
+import random 
 from graphlib import TopologicalSorter
 from datetime import datetime, timedelta, time
 from typing import List, Optional
@@ -82,31 +86,26 @@ HF_API_URL = "https://router.huggingface.co/models/sentence-transformers/all-Min
 # EMBEDDING CONFIGURATION (GOOGLE GEMINI)
 # ---------------------------
 # Make sure GOOGLE_API_KEY is in your .env file
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-if not GOOGLE_API_KEY:
-    print("⚠️ WARNING: GOOGLE_API_KEY is missing. Embeddings will fail.")
-else:
-    genai.configure(api_key=GOOGLE_API_KEY)
-
+# --- 🚀 CORRECTED: Using gemini-embedding-001 ---
 def generate_embedding(text: str):
-    """
-    Generates embeddings using Google Gemini (Free Tier).
-    Output Dimension: 768
-    """
-    try:
-        # Use the latest stable embedding model
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=text,
-            task_type="retrieval_document" 
-        )
-        return result['embedding']
-    except Exception as e:
-        print(f"❌ Google Embedding Error: {e}")
-        # Return a zero-vector fallback to prevent server crash, 
-        # allowing the user to see the error in logs without 500ing immediately.
-        raise RuntimeError(f"Google API Error: {str(e)}")
+    model_id = "gemini-embedding-001" # The new stable 2026 model
+    api_key = os.getenv("GOOGLE_API_KEY")
+    
+    # Updated URL to use the correct model ID
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:embedContent?key={api_key}"
+    
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "model": f"models/{model_id}", # Correct model string
+        "content": {"parts": [{"text": text}]}
+    }
+    
+    response = requests.post(url, headers=headers, json=payload)
+    
+    if response.status_code != 200:
+        raise Exception(f"Gemini API Error: {response.text}")
+        
+    return response.json()['embedding']['values']
 # durations for due date heuristics
 DURATION_RULES = {"ui": 3, "design": 3, "api": 5, "database": 4, "test": 2, "deploy": 1, "fix": 1, "meeting": 0}
 
@@ -174,24 +173,62 @@ class Employee(BaseModel):
     email: str
     trello_id: Optional[str] = ""
     rate: int = 50
-
+class ProfileUpdate(BaseModel):
+    display_name: str
+    email: str
 class User(BaseModel):
     username: str
     password: str
+class ApproveRequest(BaseModel):
+    session_id: str  # 🚀 This allows the backend to know which chat to save to
+class RejectRequest(BaseModel):
+    reason: str = "No reason provided."
+    session_id: str # 🚀 Add this to track which chat rejected it
+# --- 🆕 NEW MODELS FOR DASHBOARD ---
+class ChartDataSet(BaseModel):
+    label: str
+    data: List[int]
+    borderColor: Optional[str] = None
+    backgroundColor: Optional[List[str]] = None
+
+class ChartData(BaseModel):
+    labels: List[str]
+    datasets: List[ChartDataSet]
+
+class FinanceItem(BaseModel):
+    date: str
+    category: str
+    details: str
+    amount: str
+    status: str
+    isPositive: bool
+
+class DashboardStats(BaseModel):
+    tasks_due: int
+    overdue: int
+    active: int
+    resolved_risks: int
+    in_progress: int
+    not_started: int
+    total_team: int
+    total_budget: str        # 👈 ADD THIS
+    current_project: str     # 👈 ADD THIS
+    recent_projects: List[str] # 👈 ADD THIS
+    line_chart: ChartData
+    donut_chart: ChartData
+    finance_table: List[FinanceItem]
 
 class UserRequest(BaseModel):
     message: str
     session_id: str = "default_session"
 
-class RejectRequest(BaseModel):
-    reason: str = "No reason provided."
 
 # --------------------
 # MEMORY & LLM
 # --------------------
 pc = Pinecone(api_key=PINECONE_API_KEY)
 memory_index = pc.Index(name="project-memory", host=PINECONE_HOST)
-llm = ChatGroq(model="llama-3.1-8b-instant")
+llm = ChatGroq(model="llama-3.1-8b-instant",api_key=GROQ_API_KEY)
 
 # --------------------
 # HELPERS
@@ -421,6 +458,43 @@ def get_default_owner():
         pass
     return "Unassigned"
 
+def get_active_workflow_count():
+    """
+    Fetches active workflows with an automatic retry logic 
+    to handle Render cold-starts (ConnectionResetError).
+    """
+    api_key = os.getenv("N8N_API_KEY")
+    base_url = os.getenv("N8N_BASE_URL")
+    
+    if not api_key or not base_url:
+        print("⚠️ n8n API credentials missing in .env")
+        return 0
+
+    # Max retries = 3
+    for attempt in range(3):
+        try:
+            # Use a fresh session for each major attempt
+            with requests.Session() as session:
+                session.headers.update({"X-N8N-API-KEY": api_key})
+                
+                # attempt 0: 15s, attempt 1: 30s, attempt 2: 45s
+                timeout_val = 15 * (attempt + 1)
+                
+                response = session.get(f"{base_url}/workflows", timeout=timeout_val)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    workflows = data.get('data', [])
+                    return sum(1 for wf in workflows if wf.get('active') is True)
+                
+                print(f"⚠️ n8n Attempt {attempt+1} failed with status {response.status_code}")
+                
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            print(f"⏳ Render is waking up... Attempt {attempt+1} failed. Retrying in 3s...")
+            time_module.sleep(3) # Wait 3 seconds before trying again
+            
+    return 0
+
 def get_trello_id_from_db(name: str):
     try:
         emp = employees_collection.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
@@ -473,7 +547,6 @@ You are an Intelligent AI Project Manager.
     - Argument 'budget': 
       - 🛑 STRICTLY extract the dollar amount from the user's prompt.
       - 🛑 IF NO CURRENCY AMOUNT IS MENTIONED IN THE CHAT: You MUST pass 0.
-      - 🛑 DO NOT GUESS. DO NOT DEFAULT TO 1000 or 10000.
       - 🛑 DO NOT infer budget from document content unless explicitly told to "use the budget from the document".
       - If unsure, pass 0.
     - Argument 'tasks': A valid JSON string array of tasks.
@@ -749,27 +822,30 @@ def send_slack_announcement(message: str):
     except Exception:
         return "Failed."
 
+# --- 🚀 UPDATED TOOL: Matches 3072 dimensions ---
 @tool
 def consult_project_memory(query: str, username: str = "placeholder"):
     """Searches project documentation in the vector database."""
     try:
+        # 1. Generate Gemini Embedding (Now 3072 dimensions)
         v = generate_embedding(query)
-        # HF sometimes returns [[...]] or [...]
-        if isinstance(v, list) and len(v) > 0 and isinstance(v[0], list):
-            v = v[0]
-        if isinstance(v, dict) and "error" in v:
-            return f"Error from HuggingFace: {v['error']}"
+        
+        # 2. Query Pinecone
         r = memory_index.query(
             vector=v, 
             top_k=3, 
             include_metadata=True, 
             filter={"username": username} 
         )
+        
+        if not r['matches']:
+            return "No relevant project context found in memory."
+            
         return "\n".join([f"- {m['metadata']['text']}" for m in r['matches']])
     except Exception as e:
         return f"Memory Error: {e}"
-
-
+    
+    
 @tool
 def schedule_meeting_tool(start_time: str, summary: str = "General Meeting", description: str = "No description provided", action: str = "book"):
     """
@@ -940,7 +1016,7 @@ def check_project_status(dummy: str = ""):
         risks = []
         try:
             print(f"🔍 Fetching cards from: {N8N_GET_ALL_CARDS_URL}")
-            response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=30)
+            response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=5.0)
             
             if response.status_code == 200:
                 # 1. Handle Response Type
@@ -1187,6 +1263,22 @@ llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement,
 # --------------------
 # ENDPOINTS
 # --------------------
+
+@app.post("/user/profile")
+async def update_profile(profile: ProfileUpdate, username: str = Depends(get_current_user)):
+    try:
+        users_collection.update_one(
+            {"username": username},
+            {"$set": {"display_name": profile.display_name, "email": profile.email}}
+        )
+        return {"msg": "Profile updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/user/profile")
+async def get_profile(username: str = Depends(get_current_user)):
+    user = users_collection.find_one({"username": username}, {"_id": 0, "password": 0})
+    return user or {"display_name": "Project Manager", "email": ""}
 
 def save_chat_message(session_id: str,role: str, content: str):
     """Saves a message to MongoDB."""
@@ -1438,7 +1530,7 @@ def get_full_history(session_id: str):
         return {"error": str(e)}
 
 @app.post("/approve")
-def approve_plan():
+def approve_plan(req: ApproveRequest):
     global pending_plan
     if not pending_plan:
         return {"status": "No plan."}
@@ -1463,41 +1555,71 @@ def approve_plan():
             current_hour = 9
         print(f"⏳ Waiting 5s for n8n to finish processing '{name}'...", flush=True)
         time_module.sleep(5)
+    # 1️⃣ DASHBOARD MESSAGE (Keep this exactly as is so your charts don't break)
     budget_info = pending_plan.get("budget_summary", "No Budget Info")
+    dashboard_msg = (
+        f"✅ *APPROVED:* {pending_plan['goal']}\n"
+        f"{budget_info}\n"
+        f"----------------------------------\n"
+        f"{chr(10).join(results)}"
+    )
+    # 2️⃣ PROFESSIONAL UI MESSAGE (For the user chat history)
+    activation_msg = (
+        f"🚀 **Project Execution Plan Activated!**\n\n"
+        f"✅ **Goal:** {pending_plan['goal']}\n"
+        f"{budget_info}\n"
+        f"----------------------------------\n"
+        f"The team has been notified via Slack and Trello cards have been synced to Google Calendars."
+    )
+
     try:
-        final_slack_msg = (
-            f"✅ *APPROVED:* {pending_plan['goal']}\n"
-            f"{budget_info}\n"  # <--- 🔥 ADDED THIS LINE
-            f"----------------------------------\n"
-            f"{chr(10).join(results)}"
-        )
-        requests.post(N8N_SLACK_URL, json={"message": final_slack_msg}, timeout=5)
-    except:
-        pass
+        save_chat_message("system_plan_management", "ai", dashboard_msg)
+        
+        # Save the professional message to the user's ACTUAL session (for refresh persistence)
+        save_chat_message(req.session_id, "ai", activation_msg)
+        
+        # 2. Send to Slack
+        requests.post(N8N_SLACK_URL, json={"message": dashboard_msg}, timeout=5)
+    except Exception as e:
+        print(f"❌ Error during save: {e}")
 
     pending_plan = None
-    return {"status": "Executed", "details": "\n".join(results)}
+    return {"reply": activation_msg}
+# 🚀 Update an existing employee
+@app.put("/employees/{email}")
+def update_employee(email: str, emp: Employee):
+    employees_collection.update_one({"email": email}, {"$set": emp.dict()})
+    return {"msg": "Updated successfully"}
 
-
+# 🚀 Delete an employee
+@app.delete("/employees/{email}")
+def delete_employee(email: str):
+    employees_collection.delete_one({"email": email})
+    return {"msg": "Deleted successfully"}
 
 @app.post("/reject")
-def reject_plan(req: Optional[RejectRequest] = None): # <--- Make it Optional
-    global pending_plan, current_budget_warning, current_risks
+def reject_plan(req: RejectRequest): # 🚀 No longer Optional; we need that session_id
+    global pending_plan, current_budget_warning
     
-    # 2. Clear the plan and the specific warning string
+    # 1. Capture the goal for the message before we delete it
+    proj_name = pending_plan.get("goal", "the proposed plan") if pending_plan else "the plan"
+    
+    # 2. Clear the internal memory
     pending_plan = None
     current_budget_warning = "" 
     
-    # Handle the reason safely
-    reason_text = req.reason if req else "User rejected the plan (No reason given)."
+    # 3. Create a Professional Message
+    reject_msg = f"❌ **Plan Rejected:** The execution strategy for '{proj_name}' has been cancelled.\n**Reason:** {req.reason}"
     
-    # Feedback: Log why it was rejected so the AI context knows
-    save_chat_message("system_plan_management", "user", f"❌ I rejected the plan. Reason: {reason_text}")
+    # 4. ✅ SAVE TO DB: This ensures it shows up permanently after a refresh
+    save_chat_message(req.session_id, "ai", reject_msg)
 
-    # 3. Force refresh the risk list immediately
+
+    # 6. Force refresh project status to clear the dashboard warning
     check_project_status.invoke({"dummy": "refresh"})
     
-    return {"status": "Cancelled"}
+    # 7. Return to frontend for instant UI update
+    return {"reply": reject_msg}
 
 @app.get("/risks")
 def get_risks():
@@ -1511,6 +1633,209 @@ def get_risks():
     
     # 2. Return the freshly updated list
     return {"risks": current_risks}
+
+
+# ==========================================
+# 🚀 NEW DASHBOARD ENDPOINT
+# ==========================================
+
+@app.get("/dashboard/data", response_model=DashboardStats)
+def get_dashboard_data(username: str = Depends(get_current_user)):
+    real_active_agents = get_active_workflow_count()
+    
+    # 1. INITIALIZE EVERYTHING
+    tasks_due_today = 0
+    overdue_tasks = 0
+    status_counts = {"Completed": 0, "In Progress": 0, "Not Started": 0}
+    total_employees = 0
+    if employees_collection is not None:
+        total_employees = employees_collection.count_documents({})
+    
+    today = datetime.now().date()
+    completed_line = {(today + timedelta(days=i)).strftime("%d %b"): 0 for i in range(-2, 12)}
+    active_line = {(today + timedelta(days=i)).strftime("%d %b"): 0 for i in range(-2, 12)}
+    upcoming_line = {(today + timedelta(days=i)).strftime("%d %b"): 0 for i in range(-2, 12)}
+    sorted_dates = list(completed_line.keys())
+
+    # --- 🚀 STEP A: DYNAMIC SIDEBAR & BUDGET FROM MONGODB ---
+    # Fetch last 3 approvals to fill sidebar and get current project totals
+    # --- 🚀 STEP A: DYNAMIC SIDEBAR & BUDGET FROM MONGODB ---
+    # --- 🚀 STEP A: DYNAMIC SIDEBAR & BUDGET FROM MONGODB ---
+    import re
+
+    approved_chats = list(chats_collection.find(
+        {"content": {"$regex": "APPROVED:"}}, 
+        {"content": 1, "_id": 0}
+    ).sort("timestamp", -1).limit(3))
+
+    sidebar_projects = []
+    total_project_budget = "$0"
+    current_project_name = "Core Operations"
+
+    for i, msg in enumerate(approved_chats):
+        content = msg["content"]
+        try:
+            # 1. Capture text after APPROVED: up until the first newline or emoji
+            # The [^\n\r🚨💰✅💵*]+ part ensures we don't grab icons or markdown stars
+            name_match = re.search(r"APPROVED:?\*?\*?\s*([^\n\r🚨💰✅💵*]+)", content)
+            
+            if name_match:
+                # 👈 THE FIX: Explicitly remove literal "\n" strings and extra stars
+                proj_name = name_match.group(1).replace("\\n", "").replace("*", "").strip()
+                
+                if proj_name and proj_name not in sidebar_projects:
+                    sidebar_projects.append(proj_name)
+                
+                # Use the most recent one for main header
+                if i == 0:
+                    current_project_name = proj_name
+                    # Find dollar amount line
+                    budget_match = re.search(r"Total:?\*?\*?\s*(\$[\d,.]+)", content)
+                    if budget_match:
+                        total_project_budget = budget_match.group(1).strip()
+        except Exception as e:
+            print(f"⚠️ Parsing error: {e}")
+
+    if not sidebar_projects:
+        sidebar_projects = ["Nexus Platform", "Agent Core", "Sync Engine"]
+    
+    sidebar_projects = sidebar_projects[:3]
+    
+    # --- 🚀 STEP B: TRELLO DATA PROCESSING ---
+    try:
+        analytics_url = os.getenv("N8N_DASHBOARD_URL") or N8N_GET_ALL_CARDS_URL
+        response = requests.get(analytics_url, timeout=30)
+        
+        # 1. Initialize storage for Analysis
+        finance_items = [] 
+        total_committed_dollars = 0
+        
+        if response.status_code == 200:
+            raw_data = response.json()
+            
+            # Handle unboxing logic correctly
+            if isinstance(raw_data, list) and len(raw_data) > 0:
+                first_item = raw_data[0]
+                cards = first_item.get("", raw_data) if isinstance(first_item, dict) else raw_data
+            else:
+                cards = raw_data
+
+            # Define today at the start of the processing block
+            # Define today at the start of the processing block
+            today_dt = datetime.now().date()
+
+            for c in cards:
+                if isinstance(c, dict) and "json" in c: c = c["json"]
+                if not isinstance(c, dict): continue
+
+                # --- 1. STATUS & CHART LOGIC ---
+                list_id = c.get("idList")
+                is_done = (list_id == "6922b7e358b2e5d625ad65ba") or c.get("dueComplete") is True
+
+                if is_done:
+                    status_counts["Completed"] += 1
+                elif list_id == "6922b7e358b2e5d625ad65b9":
+                    status_counts["In Progress"] += 1
+                else:
+                    status_counts["Not Started"] += 1
+                
+                # --- 🚨 CHART & COUNTER LOGIC (THE FIX) ---
+                if c.get("due"):
+                    try:
+                        # Standardize date parsing
+                        due_dt_full = datetime.fromisoformat(c["due"].replace("Z", "+00:00"))
+                        due_dt = due_dt_full.date()
+                        date_str = due_dt.strftime("%d %b") # Format to match your sorted_dates keys
+
+                        # A. Update Line Chart Dictionaries if the date exists in our range
+                        if date_str in completed_line:
+                            if is_done:
+                                completed_line[date_str] += 1
+                            elif list_id == "6922b7e358b2e5d625ad65b9":
+                                active_line[date_str] += 1
+                            else:
+                                upcoming_line[date_str] += 1
+
+                        # B. Update Dashboard Top Counters
+                        if not is_done:
+                            if due_dt < today_dt:
+                                overdue_tasks += 1
+                            elif due_dt == today_dt:
+                                tasks_due_today += 1
+                    except Exception as e:
+                        print(f"Date parse error: {e}")
+
+                # --- 2. FINANCIAL BURN ANALYSIS ---
+                desc = c.get("desc", "")
+                if "💰 **Cost:**" in desc:
+                    try:
+                        raw_amt = desc.split("💰 **Cost:**")[1].split("(")[0].replace("$", "").replace(",", "").strip()
+                        cost_val = int(float(raw_amt))
+                        total_committed_dollars += cost_val 
+
+                        if cost_val >= 500:
+                            finance_items.append({
+                                "date": datetime.now().strftime("%b %d"),
+                                "category": "Major Resource",
+                                "details": c.get("name").split("]")[-1].strip(),
+                                "amount": f"${cost_val}",
+                                "status": "Released" if is_done else "Allocated",
+                                "isPositive": False,
+                                "numeric": cost_val 
+                            })
+                    except: pass
+
+            # 2. PM ANALYSIS: Sort by highest risk (highest cost)
+            finance_items.sort(key=lambda x: x.get('numeric', 0), reverse=True)
+
+            # 🚀 FIND THE USER RECORD USING THE AUTHENTICATED USERNAME
+            user_record = users_collection.find_one({"username": username}, {"display_name": 1})
+            
+            # 🚀 FALLBACK: If they haven't set a name yet, use "Project Manager"
+            display_name = user_record.get("display_name", "Project Manager") if user_record else "Project Manager"
+            return {
+                "tasks_due": tasks_due_today,
+                "overdue": overdue_tasks,
+                "active": real_active_agents,
+                "resolved_risks": status_counts["Completed"],
+                "in_progress": status_counts["In Progress"], 
+                "not_started": status_counts["Not Started"], 
+                "total_team": total_employees,
+                "total_budget": total_project_budget,
+                "user_display_name": display_name,
+                "committed_budget": f"${total_committed_dollars}", # Total board reality
+                "current_project": current_project_name,
+                "recent_projects": sidebar_projects,
+                "line_chart": {
+                    "labels": sorted_dates,
+                    "datasets": [
+                        {"label": "Completed", "data": [completed_line[d] for d in sorted_dates], "borderColor": "#6C5DD3", "backgroundColor": ["transparent"], "tension": 0.4},
+                        {"label": "Active", "data": [active_line[d] for d in sorted_dates], "borderColor": "#FFCE73", "backgroundColor": ["transparent"], "tension": 0.4},
+                        {"label": "Upcoming", "data": [upcoming_line[d] for d in sorted_dates], "borderColor": "#3F8CFF", "backgroundColor": ["transparent"], "tension": 0.4}
+                    ]
+                },
+                "donut_chart": {
+                    "labels": ["Completed", "In Progress", "Not Started"],
+                    "datasets": [{
+                        "label": "Tasks",
+                        "data": [status_counts["Completed"], status_counts["In Progress"], status_counts["Not Started"]],
+                        "backgroundColor": ["#6C5DD3", "#3F8CFF", "#FFCE73"]
+                    }]
+                },
+                "finance_table": finance_items[:5] # Top 5 High-Impact items
+            }
+
+    except Exception as e:
+        print(f"⚠️ Dashboard Analytics Error: {e}")
+        return {}
+    
+@app.post("/trigger-workflow")
+def trigger_workflow(workflow_id: str):
+    """
+    Called when user clicks 'Run Workflow'.
+    """
+    # Logic to hit n8n webhook can go here
+    return {"status": "triggered", "workflow_id": workflow_id}
 
 @app.get("/")
 def health_check():
