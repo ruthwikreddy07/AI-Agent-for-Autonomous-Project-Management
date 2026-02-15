@@ -7,6 +7,7 @@ import { TeamComponent } from './team/team';
 import { SettingsComponent } from './settings/settings'; 
 import { LoginComponent } from './login/login'; 
 import { AiService } from './ai.service'; 
+import { ChangeDetectorRef } from '@angular/core'; //
 
 @Component({
   selector: 'app-root',
@@ -53,9 +54,9 @@ import { AiService } from './ai.service';
 export class App {
   isAuthenticated = false;
   showLoginModal = false; // Controls the popup
-  currentView = 'dashboard';
+  currentView: string = 'dashboard';
 
-  constructor(private aiService: AiService) {
+  constructor(private aiService: AiService, private cdr: ChangeDetectorRef) { //
     this.isAuthenticated = this.aiService.isLoggedIn();
   }
 
@@ -109,5 +110,9 @@ export class App {
     else {
       if (confirm(`⚠️ No ${type.toUpperCase()} link found! Go to Settings?`)) this.currentView = 'settings';
     }
+  }
+
+  switchView(view: string) {
+    this.currentView = view;
   }
 }

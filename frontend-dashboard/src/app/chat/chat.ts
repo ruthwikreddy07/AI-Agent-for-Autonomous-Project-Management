@@ -229,10 +229,8 @@ ngAfterViewChecked() {
   
   scrollToBottom() { try { this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight; } catch(err) { } }
   goBack() {
-  this.ngZone.run(() => {
-    this.router.navigate(['/dashboard']);
-  });
-}
+    this.navigate.emit('dashboard'); // 🚀 Send signal to parent
+  }
   switchView(view: 'chat' | 'settings') { this.currentView = view; }
 
   sendMessage() {

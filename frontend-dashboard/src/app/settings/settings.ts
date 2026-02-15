@@ -11,6 +11,7 @@ import { Router } from '@angular/router';
   styleUrls: ['./settings.css']
 })
 export class SettingsComponent implements OnInit {
+  @Output() goBack = new EventEmitter<void>();
   
   
   username = '';
@@ -19,10 +20,10 @@ export class SettingsComponent implements OnInit {
   isDarkMode = false;
   links = { trello: '', n8n: '', slack: '' };
 
-  constructor(private aiService: AiService, private router: Router) {}
+  constructor(private aiService: AiService) {}
 
-  goBack() {
-    this.router.navigate(['/dashboard']);
+  triggerBack() {
+    this.goBack.emit(); // 🚀 Signal to app.ts
   }
   ngOnInit() {
     this.username = localStorage.getItem('current_user') || 'User';

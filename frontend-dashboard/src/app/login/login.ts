@@ -12,19 +12,21 @@ import { Router } from '@angular/router';
   styleUrls: ['./login.css']
 })
 export class LoginComponent {
+  @Output() loginSuccess = new EventEmitter<void>(); // 🚀 Re-add the emitter
   
   isLogin = true;
   username = '';
   password = '';
 
-  constructor(private aiService: AiService, private router: Router) {}
-
+constructor(private aiService: AiService) {}
   onSubmit() {
     if (!this.username || !this.password) return;
 
     if (this.isLogin) {
       this.aiService.login(this.username, this.password).subscribe({
-        next: () => this.router.navigate(['/dashboard']),
+        next: () => {
+          this.loginSuccess.emit(); // 🚀 Tell parent to swap to dashboard
+        },
         error: () => alert('Invalid Credentials')
       });
     } else {

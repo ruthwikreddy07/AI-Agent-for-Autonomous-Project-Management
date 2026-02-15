@@ -13,6 +13,7 @@ import { NgZone } from '@angular/core'; // 🚀 Add this
   styleUrls: ['./team.css']
 })
 export class TeamComponent implements OnInit {
+  @Output() goBack = new EventEmitter<void>();
   constructor(private aiService: AiService, private router: Router,private ngZone: NgZone ) {}
   
   
@@ -51,11 +52,9 @@ export class TeamComponent implements OnInit {
       });
     }
   }
-  goBack() {
-  this.ngZone.run(() => {
-    this.router.navigate(['/dashboard']);
-  });
-}
+  goBackToDashboard() {
+    this.goBack.emit(); // 🚀 Send signal to parent
+  }
 
   // 🚀 Unified Save logic
   saveEmployee() {
