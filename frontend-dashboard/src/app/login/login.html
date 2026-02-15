@@ -1,0 +1,40 @@
+<div class="visual-side">
+  <div class="brand-tag">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+    PlanoraX
+  </div>
+  <div class="visual-content">
+    <h1>Manage projects<br>with AI precision.</h1>
+    <p>The world's first autonomous project manager. Orchestrate tasks, predict risks, and automate workflows in one classic interface.</p>
+  </div>
+</div>
+
+<div class="form-side" style="position: relative;">
+  
+  <button (click)="cancel.emit()" style="position: absolute; top: 30px; right: 30px; background: none; border: none; font-size: 24px; cursor: pointer; color: #64748b;">✕</button>
+  <div class="login-box">
+    <h2>{{ isLogin ? 'Welcome back' : 'Create account' }}</h2>
+    <span class="sub-text">{{ isLogin ? 'Please enter your details.' : 'Start your 14-day free trial.' }}</span>
+
+    <div class="field">
+      <span class="label">Username</span>
+      <input class="input" [(ngModel)]="username" placeholder="Enter your username">
+    </div>
+
+    <div class="field">
+      <span class="label">Password</span>
+      <input class="input" type="password" [(ngModel)]="password" placeholder="••••••••">
+    </div>
+
+    <button class="btn-primary" (click)="onSubmit()">
+      {{ isLogin ? 'Sign In' : 'Sign Up' }}
+    </button>
+
+    <div class="toggle-link">
+      {{ isLogin ? "Don't have an account?" : "Already have an account?" }}
+      <span class="link" (click)="isLogin = !isLogin">
+        {{ isLogin ? 'Sign up' : 'Log in' }}
+      </span>
+    </div>
+  </div>
+</div>

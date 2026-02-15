@@ -1,0 +1,111 @@
+/* Container & Scroll Logic */
+:host { 
+  display: block; 
+  height: 100vh; 
+  overflow: hidden; /* Prevent double scrollbars on the main window */
+}
+
+.team-container {
+  height: 100%;
+  overflow-y: auto; /* Enable scrolling only inside this container */
+  padding: 40px;
+  background-color: #F8F9FC;
+  box-sizing: border-box;
+}
+
+/* Header Layout */
+.header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: flex-start; 
+  margin-bottom: 40px; 
+  flex-wrap: wrap; 
+  gap: 20px;
+}
+
+.header-content { flex: 1; }
+h2 { margin: 0 0 8px 0; color: #11142D; font-size: 28px; font-weight: 700; }
+
+/* Buttons */
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.add-btn { 
+  background: #6C5DD3; color: white; border: none; padding: 12px 24px; 
+  border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.2s; 
+  box-shadow: 0 4px 12px rgba(108, 93, 211, 0.2);
+}
+.add-btn:hover { transform: translateY(-2px); }
+
+.back-btn { 
+  background: white; border: 1px solid #E4E4E4; padding: 12px 20px; 
+  border-radius: 12px; cursor: pointer; font-weight: 600; color: #11142D; transition: 0.2s; 
+}
+.back-btn:hover { border-color: #6C5DD3; color: #6C5DD3; }
+
+/* Grid & Card Styling */
+.grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); 
+  gap: 24px; 
+  padding-bottom: 40px; /* Space at the bottom for scrolling */
+}
+
+.card { 
+  background: white; border-radius: 20px; padding: 24px; 
+  border: 1px solid #F0F0F0; transition: 0.2s; position: relative;
+}
+.card:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.05); border-color: #6C5DD3; }
+
+/* Card Action Menu (Edit/Delete) */
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.card-menu { display: flex; gap: 8px; opacity: 0; transition: 0.2s; }
+.card:hover .card-menu { opacity: 1; }
+
+.menu-icon {
+  background: #F0F0F0; border: none; width: 32px; height: 32px; 
+  border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.menu-icon:hover { background: #6C5DD3; color: white; }
+.menu-icon.delete:hover { background: #FF754C; color: white; }
+
+/* Role & Identity */
+.role-tag { background: #EBE9FA; color: #6C5DD3; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.name { font-size: 20px; font-weight: 700; color: #11142D; margin: 0 0 4px 0; }
+.email { font-size: 13px; color: #808191; margin-bottom: 16px; display: block; }
+
+/* Skill Pills Fix */
+.skills-list {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; min-height: 44px;
+}
+.skill-pill {
+  background: #F4F4F4; color: #11142D; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+}
+
+/* Stats Row */
+.stats { display: flex; gap: 15px; border-top: 1px solid #F0F0F0; padding-top: 16px; }
+.stat-item { display: flex; flex-direction: column; }
+.label { font-size: 11px; color: #808191; font-weight: 600; text-transform: uppercase; }
+.val { font-size: 14px; color: #11142D; font-weight: 700; }
+
+/* Modal & Overlay */
+.overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 100; }
+.modal { background: white; padding: 32px; border-radius: 24px; width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 12px; font-weight: 700; color: #808191; margin-bottom: 8px; }
+.input { width: 100%; padding: 12px; border: 1px solid #E4E4E4; border-radius: 12px; font-size: 14px; box-sizing: border-box; }
+.input:focus { border-color: #6C5DD3; outline: none; }
+.actions { display: flex; gap: 12px; margin-top: 24px; }
+.cancel { flex: 1; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: 600; background: transparent; border: 1px solid #E4E4E4; }
+.save { flex: 1; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: 600; background: #6C5DD3; color: white; border: none; }
+
+/* Dark Theme Overrides */
+:host-context(body.dark-theme) .team-container { background-color: #0B1120; }
+:host-context(body.dark-theme) h2, 
+:host-context(body.dark-theme) .name { color: #F8FAFC; }
+:host-context(body.dark-theme) .card,
+:host-context(body.dark-theme) .modal { background-color: #1E293B; border-color: #334155; }
+:host-context(body.dark-theme) .val,
+:host-context(body.dark-theme) .back-btn { color: #F8FAFC; }
+:host-context(body.dark-theme) .back-btn { background-color: #1E293B; border-color: #334155; }
+:host-context(body.dark-theme) .skill-pill,
+:host-context(body.dark-theme) .menu-icon { background-color: #334155; color: #E2E8F0; }
+:host-context(body.dark-theme) .input { background-color: #0F172A; border-color: #334155; color: white; }

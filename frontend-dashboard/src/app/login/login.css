@@ -1,0 +1,62 @@
+:host {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+/* LEFT SIDE - The "Classic" Art Side */
+.visual-side {
+  flex: 1;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px;
+  color: white;
+  position: relative;
+}
+
+.visual-content h1 { font-size: 48px; font-weight: 800; margin-bottom: 20px; line-height: 1.1; }
+.visual-content p { font-size: 18px; color: #94a3b8; line-height: 1.6; max-width: 500px; }
+.brand-tag { 
+  position: absolute; top: 40px; left: 40px; 
+  font-weight: 700; font-size: 20px; display: flex; align-items: center; gap: 10px; 
+}
+
+/* RIGHT SIDE - The Form Side */
+.form-side {
+  flex: 1;
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.login-box { width: 100%; max-width: 400px; }
+
+h2 { font-size: 32px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+.sub-text { color: #64748b; margin-bottom: 40px; display: block; }
+
+.field { margin-bottom: 24px; }
+.label { display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 8px; }
+.input { 
+  width: 100%; padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; 
+  font-size: 15px; outline: none; transition: 0.2s; background: #f8fafc; 
+}
+.input:focus { border-color: #6C5DD3; background: white; box-shadow: 0 0 0 4px #eceaff; }
+
+.btn-primary {
+  width: 100%; background: #6C5DD3; color: white; border: none; padding: 16px; 
+  border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; transition: 0.2s;
+  margin-top: 10px;
+}
+.btn-primary:hover { background: #5b4eb3; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(108, 93, 211, 0.2); }
+
+.toggle-link {
+  margin-top: 30px; text-align: center; color: #64748b; font-size: 14px;
+}
+.link { color: #6C5DD3; font-weight: 700; cursor: pointer; text-decoration: none; }
+.link:hover { text-decoration: underline; }

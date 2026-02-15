@@ -1,8 +1,11 @@
 import { ApplicationConfig } from '@angular/core';
-import { provideHttpClient, withFetch } from '@angular/common/http'; // <--- Provides HTTP client (with fetch for SSR)
+import { provideRouter } from '@angular/router'; // 🚀 Added
+import { routes } from './app.routes';           // 🚀 Added
+import { provideHttpClient, withFetch } from '@angular/common/http';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideHttpClient(withFetch()) // <--- Adds the ability to use API calls (and SSR-safe fetch)
+    provideRouter(routes),           // 👈 Connects your routes
+    provideHttpClient(withFetch()),  // 👈 Keeps your modern HTTP config
   ]
 };

@@ -1,345 +1,113 @@
-import { Component, OnInit, AfterViewChecked, ViewChild, ElementRef } from '@angular/core';
+import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { AiService } from './ai.service';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { HttpClient } from '@angular/common/http'; // <--- 1. ADD THIS IMPORT
 
-// Keep your helper function here (outside the class)
-const isSameDay = (d1: Date, d2: Date) => {
-  return d1.getFullYear() === d2.getFullYear() &&
-         d1.getMonth() === d2.getMonth() &&
-         d1.getDate() === d2.getDate();
-};
+import { DashboardComponent } from './dashboard/dashboard'; 
+import { ChatComponent } from './chat/chat'; 
+import { TeamComponent } from './team/team';       
+import { SettingsComponent } from './settings/settings'; 
+import { LoginComponent } from './login/login'; 
+import { AiService } from './ai.service'; 
+
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './app.html',
-  styleUrls: ['./app.css']
+  imports: [CommonModule, DashboardComponent, ChatComponent, TeamComponent, SettingsComponent, LoginComponent],
+  template: `
+    <div *ngIf="showLoginModal" class="login-overlay">
+      <app-login (loginSuccess)="onLoginSuccess()" (cancel)="showLoginModal = false"></app-login>
+    </div>
+
+    <div style="height: 100vh;">
+      
+      <app-dashboard 
+        *ngIf="currentView === 'dashboard'" 
+        (navigate)="onNavigate($event)">
+      </app-dashboard>
+      
+      <app-chat 
+        *ngIf="currentView === 'chat' && isAuthenticated" 
+        (navigate)="onNavigate($event)">
+      </app-chat>
+      
+      <app-team 
+        *ngIf="currentView === 'team' && isAuthenticated" 
+        (goBack)="onNavigate('dashboard')">
+      </app-team>
+      
+      <app-settings 
+        *ngIf="currentView === 'settings' && isAuthenticated" 
+        (goBack)="onNavigate('dashboard')">
+      </app-settings>
+
+    </div>
+  `,
+  styles: [`
+    .login-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      z-index: 9999; background: rgba(0,0,0,0.5);
+      animation: fadeIn 0.2s ease-out;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  `]
 })
-export class App implements OnInit, AfterViewChecked {
-  @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
+export class App {
+  isAuthenticated = false;
+  showLoginModal = false; // Controls the popup
+  currentView = 'dashboard';
 
-  isAuthenticated: boolean = false;
-  isLoginMode: boolean = true;
-  
-  // ✅ 1. MULTI-CHAT VARIABLES
-  sessionId: string = ''; 
-  savedSessions: { id: string, label: string }[] = []; 
-  // ✅ NEW: Holds the organized list for the UI
-  groupedSessions: { label: string, sessions: any[] }[] = []; 
-
-  currentView: 'chat' | 'settings' = 'chat';
-  userMessage: string = '';
-  chatHistory: { sender: string, text: string }[] = [];
-  realRisks: string[] = [];
-  employees: any[] = [];
-  
-  loginData = { username: '', password: '' };
-  newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
-  
-  isLoading: boolean = false;
-  showApprovalButtons: boolean = false;
-
-  constructor(
-    private aiService: AiService, 
-    private sanitizer: DomSanitizer,
-    private http: HttpClient 
-  ) {}
-
-  ngOnInit() {
+  constructor(private aiService: AiService) {
     this.isAuthenticated = this.aiService.isLoggedIn();
-    
-    // Recover username from storage
-    const storedUser = localStorage.getItem('current_user');
-    if (storedUser) {
-      this.loginData.username = storedUser;
-    }
-
-    if (this.isAuthenticated) this.initDashboard();
   }
 
-  // ✅ 2. INIT DASHBOARD
-  initDashboard() {
-    this.loadSessionList(); // Load past chats
-    
-    // If no chats exist, create the first one automatically
-    if (this.savedSessions.length === 0) {
-      this.startNewChat(); 
-    } else {
-      // Otherwise, load the most recent conversation
-      this.selectSession(this.savedSessions[0]);
-    }
-
-    this.fetchRisks();
-    this.loadEmployees();
+  onLoginSuccess() {
+    this.isAuthenticated = true;
+    this.showLoginModal = false; // Close modal
+    // Determine where to go? For now, stay on dashboard or the requested view.
   }
 
-  // ✅ 3. START NEW CHAT Logic
-  startNewChat() {
-    const timestamp = new Date().getTime();
-    // Create unique ID: "session-username-123456"
-    const newId = `session-${this.loginData.username}-${timestamp}`;
-    
-    const newSession = { 
-      id: newId, 
-      label: `Chat ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` 
-    };
+  onNavigate(view: string) {
+    console.log('User clicked:', view);
 
-    this.savedSessions.unshift(newSession); // Add to top of list
-    this.saveSessionList(); 
-    this.selectSession(newSession); 
-  }
-
-  // ✅ 4. SWITCH CHAT Logic
-  selectSession(session: any) {
-    this.switchView('chat'); 
-
-    this.sessionId = session.id;
-    this.chatHistory = []; // Clear screen immediately
-    this.isLoading = true;
-
-    this.aiService.getChatHistory(this.sessionId).subscribe({
-      next: (history: any[]) => {
-        this.chatHistory = history.map(msg => ({
-          sender: msg.role === 'user' ? 'You' : 'AI Agent',
-          text: msg.content
-        }));
-        this.isLoading = false;
-        setTimeout(() => this.scrollToBottom(), 100);
-      },
-      error: (err: any) => { 
-        console.error('Failed to load history', err);
-        this.isLoading = false;
-      }
-    });
-  }
-
-  // ✅ 5. LOCAL STORAGE & GROUPING HELPERS
-  saveSessionList() {
-    localStorage.setItem('user_sessions_' + this.loginData.username, JSON.stringify(this.savedSessions));
-    this.groupSessions(); // Update UI immediately after saving
-  }
-
-  loadSessionList() {
-    const data = localStorage.getItem('user_sessions_' + this.loginData.username);
-    if (data) {
-      this.savedSessions = JSON.parse(data);
-    }
-    this.groupSessions(); // ✅ Call the grouping logic here
-  }
-
-  // ✅ NEW: Groups sessions into Today/Yesterday
-  groupSessions() {
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
-
-    const groups: { [key: string]: any[] } = {
-      "Today": [],
-      "Yesterday": []
-    };
-
-    // Sort: Newest first
-    this.savedSessions.sort((a: any, b: any) => {
-      const timeA = parseInt(a.id.split('-').pop() || '0');
-      const timeB = parseInt(b.id.split('-').pop() || '0');
-      return timeB - timeA;
-    });
-
-    this.savedSessions.forEach(session => {
-      const timestamp = parseInt(session.id.split('-').pop() || '0');
-      const date = new Date(timestamp);
-
-      if (isSameDay(date, today)) {
-        groups["Today"].push(session);
-      } else if (isSameDay(date, yesterday)) {
-        groups["Yesterday"].push(session);
-      } else {
-        const dateKey = date.toLocaleDateString('en-GB'); // e.g. 30/01/2025
-        if (!groups[dateKey]) groups[dateKey] = [];
-        groups[dateKey].push(session);
-      }
-    });
-
-    // Flatten into an array for the HTML loop
-    this.groupedSessions = Object.keys(groups)
-      .filter(key => groups[key].length > 0)
-      .map(key => ({ label: key, sessions: groups[key] }));
-  }
-
-  // ✅ NEW: Deletes a session
-  deleteSession(event: Event, sessionId: string) {
-    event.stopPropagation(); // Prevents clicking the chat row
-    if(!confirm("Delete this chat history?")) return;
-
-    // Remove from local array
-    this.savedSessions = this.savedSessions.filter(s => s.id !== sessionId);
-    this.saveSessionList(); // This triggers grouping automatically
-
-    // Send delete request to backend
-    // Access apiUrl from aiService (ensure apiUrl is public in service or use a getter)
-    const apiUrl = this.aiService['apiUrl']; 
-    this.http.delete(`${apiUrl}/chat/history/${sessionId}`).subscribe();
-
-    // If we deleted the active chat, switch to another one
-    if (this.sessionId === sessionId) {
-      if (this.savedSessions.length > 0) {
-        this.selectSession(this.savedSessions[0]);
-      } else {
-        this.startNewChat();
-      }
-    }
-  }
-
-  // --- FILE UPLOAD ---
-  onFileSelected(event: any) {
-    const file: File = event.target.files[0];
-    if (file) {
-      this.isLoading = true;
-      this.chatHistory.push({ sender: 'You', text: `📂 Uploading: ${file.name}...` });
-
-      this.aiService.uploadFile(file).subscribe({
-        next: (res: any) => {
-          this.isLoading = false;
-          this.chatHistory.push({ sender: 'AI Agent', text: res.reply });
-          if (res.approval_required) {
-            this.showApprovalButtons = true;
-          }
-        },
-        error: (err) => {
-          this.isLoading = false;
-          this.chatHistory.push({ sender: 'System', text: '❌ Upload Failed.' });
-          console.error(err);
-        }
-      });
-    }
-  }
-
-  // --- AUTHENTICATION ---
-  toggleAuthMode() {
-    this.isLoginMode = !this.isLoginMode;
-    this.loginData = { username: '', password: '' };
-  }
-
-  onAuthAction() {
-    if (!this.loginData.username || !this.loginData.password) {
-      alert('⚠️ Please enter both username and password');
+    // 1. ALLOW Dashboard (Public Preview)
+    if (view === 'dashboard') {
+      this.currentView = 'dashboard';
       return;
     }
 
-    if (this.isLoginMode) {
-      this.aiService.login(this.loginData.username, this.loginData.password).subscribe({
-        next: () => { 
-          this.isAuthenticated = true; 
-          this.initDashboard(); 
-        },
-        error: () => alert('❌ Invalid Credentials!')
-      });
-    } else {
-      this.aiService.register(this.loginData.username, this.loginData.password).subscribe({
-        next: () => { 
-          alert('✅ Account Created! Please login.');
-          this.isLoginMode = true; 
-        },
-        error: (err) => {
-          if (err.status === 400) alert('⚠️ Username already exists.');
-          else alert('❌ Registration failed. Try again.');
-        }
-      });
+    // 2. CHECK AUTH for EVERYTHING ELSE
+    if (!this.isAuthenticated) {
+      this.showLoginModal = true; // ⛔ STOP! Show Login
+      return; 
     }
-  }
 
-  onLogout() { 
-    this.aiService.logout(); 
-    this.isAuthenticated = false; 
-    this.chatHistory = []; 
-    this.savedSessions = []; 
-  }
-
-  // --- CORE UI HELPERS ---
-  formatText(text: string): SafeHtml {
-    let formatted = text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') 
-      .replace(/\n/g, '<br>'); 
-    return this.sanitizer.bypassSecurityTrustHtml(formatted);
-  }
-
-  ngAfterViewChecked() { this.scrollToBottom(); }
-  scrollToBottom() { try { this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight; } catch(err) { } }
-  switchView(view: 'chat' | 'settings') { this.currentView = view; }
-
-  // ✅ 6. SEND MESSAGE
-  sendMessage() {
-    if (!this.userMessage.trim()) return;
-    this.chatHistory.push({ sender: 'You', text: this.userMessage });
-    const msg = this.userMessage;
-    this.userMessage = ''; 
-    this.isLoading = true; 
-    this.showApprovalButtons = false;
-
-    // Sending with Session ID
-    this.aiService.sendMessage(msg, this.sessionId).subscribe({
-      next: (res: any) => {
-        this.chatHistory.push({ sender: 'AI Agent', text: res.reply });
-        this.isLoading = false;
-        if (res.approval_required) this.showApprovalButtons = true;
-        this.fetchRisks();
-      },
-      error: () => { 
-        this.chatHistory.push({ sender: 'System', text: '⚠️ Connection Error. Ensure Backend is running.' }); 
-        this.isLoading = false; 
-      }
-    });
-  }
-
-  // --- EMPLOYEE & RISKS ---
-  loadEmployees() { this.aiService.getEmployees().subscribe(data => this.employees = data); }
-
-  addEmployee() {
-    if (!this.newEmp.name || !this.newEmp.email) {
-      alert('⚠️ Name and Email are required!');
+    // 3. If Logged In, Handle External Links
+    if (view === 'tasks' || view === 'workflow' || view === 'slack') {
+      this.openExternalLink(view);
       return;
     }
 
-    const empData = {
-      ...this.newEmp,
-      skills: typeof this.newEmp.skills === 'string' 
-        ? (this.newEmp.skills as string).split(',') 
-        : this.newEmp.skills
-    };
-
-    this.aiService.addEmployee(
-      empData.name, 
-      empData.role, 
-      empData.skills, 
-      empData.email, 
-      empData.rate
-    ).subscribe({
-      next: (res) => {
-        alert(res.msg);
-        this.newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
-        this.loadEmployees();
-      },
-      error: () => alert('Error adding employee')
-    });
+    // 4. Handle Logout
+    if (view === 'logout') {
+      this.aiService.logout();
+      this.isAuthenticated = false;
+      
+      // 🚀 THE FIX: Instead of showing a broken dashboard, show the Login screen
+      this.showLoginModal = true; 
+      this.currentView = 'dashboard'; // Keep dashboard as the background view
+      return;
+    }
+    // 5. Allow Internal Navigation
+    this.currentView = view;
   }
 
-  fetchRisks() { this.aiService.getRisks().subscribe(res => this.realRisks = res.risks); }
-  
-  onApprove() {
-    this.showApprovalButtons = false; 
-    this.isLoading = true;
-    this.aiService.approvePlan().subscribe(() => {
-      this.chatHistory.push({ sender: 'System', text: '✅ Plan Authorized. Executing...' });
-      this.isLoading = false;
-      this.fetchRisks();
-    });
-  }
-  
-  onReject() {
-    this.showApprovalButtons = false;
-    this.aiService.rejectPlan().subscribe(() => this.chatHistory.push({ sender: 'System', text: '❌ Plan Cancelled.' }));
+  openExternalLink(type: string) {
+    const savedLinks = localStorage.getItem('nexus_links');
+    const links = savedLinks ? JSON.parse(savedLinks) : {};
+    let url = type === 'tasks' ? links.trello : type === 'workflow' ? links.n8n : links.slack;
+
+    if (url) window.open(url, '_blank');
+    else {
+      if (confirm(`⚠️ No ${type.toUpperCase()} link found! Go to Settings?`)) this.currentView = 'settings';
+    }
   }
 }

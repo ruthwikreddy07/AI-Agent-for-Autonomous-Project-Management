@@ -1,0 +1,153 @@
+<div class="header">
+  <div class="header-text">
+    <h2>Settings</h2>
+    <p>Manage your account, integrations, and preferences.</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn-secondary" (click)="goBack.emit()">Back</button>
+    <button class="btn-primary" (click)="saveSettings()">Save Changes</button>
+  </div>
+</div>
+
+<div class="container">
+  
+  <div class="card">
+    <div class="card-header">
+      <div class="icon-box bg-purple">👤</div>
+      <div>
+        <h3>Profile & Identity</h3>
+        <span class="card-desc">Your public presence on PlanoraX.</span>
+      </div>
+    </div>
+    
+    <div style="display: flex; gap: 24px; margin-bottom: 10px;">
+      <div style="width: 70px; height: 70px; border-radius: 50%; background: #F4F5F7; display: flex; align-items: center; justify-content: center; color: #808191; font-size: 24px; border: 1px dashed #C1C7D0; flex-shrink: 0;">
+        📷
+      </div>
+      <div style="flex: 1;">
+        <div class="field-group">
+  <label>Display Name</label>
+  <input [(ngModel)]="displayName" name="displayName" class="input" placeholder="e.g. Project Manager">
+</div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div class="field-group">
+        <label>Username (ID)</label>
+        <input disabled [value]="username" class="input">
+      </div>
+      <div class="field-group">
+  <label>Email Address</label>
+  <input type="email" [(ngModel)]="email" name="email" class="input" placeholder="admin@PlanoraX.com">
+</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="icon-box bg-blue">🔗</div>
+      <div>
+        <h3>Integrations</h3>
+        <span class="card-desc">Connect external tools to your dashboard.</span>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Trello Board URL</label>
+      <input [(ngModel)]="links.trello" class="input" placeholder="https://trello.com/b/...">
+    </div>
+    <div class="field-group">
+      <label>n8n Webhook</label>
+      <input [(ngModel)]="links.n8n" class="input" placeholder="https://n8n.io/...">
+    </div>
+    <div class="field-group">
+      <label>Slack Workspace</label>
+      <input [(ngModel)]="links.slack" class="input" placeholder="Workspace ID or URL">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="icon-box bg-orange">🔒</div>
+      <div>
+        <h3>Security</h3>
+        <span class="card-desc">Update your password and security settings.</span>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Username (Confirm Identity)</label>
+      <input disabled [value]="username" class="input" style="background: #FFF9EB; color: #D97706; border-color: #FCD34D;">
+    </div>
+
+    <div class="field-group">
+      <label>Current Password</label>
+      <input type="password" class="input" placeholder="Enter current password">
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div class="field-group">
+        <label>New Password</label>
+        <input type="password" class="input" placeholder="New password">
+      </div>
+      <div class="field-group">
+        <label>Confirm</label>
+        <input type="password" class="input" placeholder="Confirm">
+      </div>
+    </div>
+    
+    <div style="display:flex; justify-content: flex-end; margin-top: 10px;">
+      <button class="btn-primary" style="background: #11142D;">Update Password</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="icon-box bg-purple">⚙️</div>
+      <div>
+        <h3>App Preferences</h3>
+        <span class="card-desc">Customize your dashboard experience.</span>
+      </div>
+    </div>
+
+    <div class="pref-row">
+      <div class="pref-text">
+        <strong>Dark Mode</strong>
+        <span>Switch to a dark theme.</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" [checked]="isDarkMode" (change)="toggleDarkMode()">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="pref-row">
+      <div class="pref-text">
+        <strong>Email Notifications</strong>
+        <span>Receive weekly reports via email.</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card danger-zone">
+    <div class="card-header" style="border-bottom-color: #FFE5E0;">
+      <div class="icon-box bg-red">⚠️</div>
+      <div>
+        <h3 style="color: #FF754C;">Danger Zone</h3>
+        <span class="card-desc" style="color: #FF754C;">Irreversible actions.</span>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <strong style="display: block; color: #11142D; font-size: 14px;">Delete Account</strong>
+        <span style="font-size: 13px; color: #808191;">This action cannot be undone.</span>
+      </div>
+      <button class="btn-danger">Delete Account</button>
+    </div>
+  </div>
+</div>

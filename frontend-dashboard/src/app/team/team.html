@@ -1,0 +1,59 @@
+<div class="team-container">
+  <div class="header">
+    <div class="header-content">
+      <h2>Team Space</h2>
+      <span style="color: #808191; font-size: 14px;">Manage your AI & Human workforce</span>
+    </div>
+    
+    <div class="header-actions">
+      <button class="back-btn" (click)="goBack.emit()">← Dashboard</button>
+      <button class="add-btn" (click)="openAddModal()">+ Add Member</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div *ngIf="employees.length === 0" style="grid-column: 1/-1; text-align: center; color: #808191; padding: 40px;">
+      No team members found. Click "+ Add Member" to start.
+    </div>
+
+    <div class="card" *ngFor="let emp of employees">
+      <div class="card-top">
+        <span class="role-tag">{{ emp.role }}</span>
+        <div class="card-menu">
+          <button class="menu-icon" (click)="editEmployee(emp)">✎</button>
+          <button class="menu-icon delete" (click)="deleteEmployee(emp.email)">✕</button>
+        </div>
+      </div>
+      
+      <h3 class="name">{{ emp.name }}</h3>
+      <span class="email">{{ emp.email }}</span>
+      
+      <div class="skills-list">
+        <span class="skill-pill" *ngFor="let skill of emp.skills">{{ skill }}</span>
+      </div>
+      
+      <div class="stats">
+        <div class="stat-item">
+          <span class="label">RATE</span>
+          <span class="val">${{ emp.rate }}/hr</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" *ngIf="showModal">
+  <div class="modal">
+    <h3 style="margin-top:0">{{ isEditing ? 'Edit Member' : 'New Team Member' }}</h3>
+    <div class="field"><label>Name</label><input [(ngModel)]="newEmp.name" class="input"></div>
+    <div class="field"><label>Role</label><input [(ngModel)]="newEmp.role" class="input"></div>
+    <div class="field"><label>Email</label><input [(ngModel)]="newEmp.email" class="input" [disabled]="isEditing"></div>
+    <div class="field"><label>Rate ($/hr)</label><input type="number" [(ngModel)]="newEmp.rate" class="input"></div>
+    <div class="field"><label>Skills (comma separated)</label><input [(ngModel)]="newEmp.skills" class="input"></div>
+    
+    <div class="actions">
+      <button class="cancel" (click)="showModal = false">Cancel</button>
+      <button class="save" (click)="saveEmployee()">{{ isEditing ? 'Update' : 'Save Member' }}</button>
+    </div>
+  </div>
+</div>
