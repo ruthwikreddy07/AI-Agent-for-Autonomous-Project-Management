@@ -2,7 +2,7 @@ import { Component, Output, EventEmitter, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AiService } from '../ai.service'; // 👈 Adjust the path if necessary
-
+import { Router } from '@angular/router';
 @Component({
   selector: 'app-settings',
   standalone: true,
@@ -11,7 +11,7 @@ import { AiService } from '../ai.service'; // 👈 Adjust the path if necessary
   styleUrls: ['./settings.css']
 })
 export class SettingsComponent implements OnInit {
-  @Output() goBack = new EventEmitter<void>();
+  
   
   username = '';
   displayName = ''; // 🚀 New: Bound to input
@@ -19,8 +19,11 @@ export class SettingsComponent implements OnInit {
   isDarkMode = false;
   links = { trello: '', n8n: '', slack: '' };
 
-  constructor(private aiService: AiService) {} // 👈 Inject your service
+  constructor(private aiService: AiService, private router: Router) {}
 
+  goBack() {
+    this.router.navigate(['/dashboard']);
+  }
   ngOnInit() {
     this.username = localStorage.getItem('current_user') || 'User';
     
