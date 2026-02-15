@@ -118,14 +118,15 @@ app = FastAPI()
 allowed_origins = [
     "http://localhost:4200",
     "https://ai-agent-for-project-management.onrender.com",
+    "https://ai-agent-for-project-management.onrender.com/" # Add both with and without slash
 ]
-# optionally allow all in dev; in production prefer explicit origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,  # keep '*' if Render frontend domain dynamic; remove for strict prod
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], # Explicitly list methods
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"], # Be explicit
     expose_headers=["*"],
 )
 
