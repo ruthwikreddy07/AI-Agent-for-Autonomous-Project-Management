@@ -711,5 +711,8 @@ Distributed under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  Architected and built by <a href="https://github.com/ruthwikreddy07"><strong>ruthwikreddy07</strong></a>
+  Architected and built by <br><br>
+  <a href="https://github.com/ruthwikreddy07"><strong>Ruthwik Reddy</strong></a> 
+  &nbsp;•&nbsp;
+  <a href="https://github.com/Ninishareddy49"><strong>Ninisha Reddy</strong></a>
 </p>
