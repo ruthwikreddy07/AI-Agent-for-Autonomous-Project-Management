@@ -715,4 +715,6 @@ Distributed under the [MIT License](LICENSE).
   <a href="https://github.com/ruthwikreddy07"><strong>Ruthwik Reddy</strong></a> 
   &nbsp;•&nbsp;
   <a href="https://github.com/Ninishareddy49"><strong>Ninisha Reddy</strong></a>
+  &nbsp;•&nbsp;
+  <a href="https://github.com/ashureddy02"><strong>Ashritha Reddy</strong></a>
 </p>
