@@ -19,6 +19,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   @Output() navigate = new EventEmitter<string>();
   @ViewChild('lineCanvas', { static: false }) lineCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('donutCanvas', { static: false }) donutCanvas!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('burndownCanvas', { static: false }) burndownCanvas!: ElementRef<HTMLCanvasElement>;
 
   // Variables bound to your HTML {{ }}
 stats: any = {
@@ -33,7 +34,9 @@ stats: any = {
   current_project: '',
   recent_projects: [] as string[],
   user_display_name: 'Project Manager',
-  team_workload: []
+  team_workload: [],
+  burn_percentage: 0,
+  burndown_chart: null
 };
   financeData: any[] = [];
 
@@ -45,6 +48,7 @@ stats: any = {
   
   private lineChart!: Chart;
   private donutChart!: Chart;
+  private burndownChart!: Chart;
   trelloUrl: string = ''; // 🚀 Variable to store the link
   constructor(private cdr: ChangeDetectorRef,private aiService: AiService) {} // 👈 Added AiService injection
 
@@ -78,10 +82,20 @@ stats: any = {
         current_project: data.current_project,
         recent_projects: data.recent_projects,
         user_display_name: data.user_display_name,
-        team_workload: data.team_workload || []
+        team_workload: data.team_workload || [],
+        burn_percentage: data.burn_percentage || 0,
+        burndown_chart: data.burndown_chart || null
       };
 
       this.financeData = data.finance_table;
+
+      // Update Burndown Chart
+      if (data.burndown_chart && this.burndownChart) {
+        this.burndownChart.data.labels = data.burndown_chart.labels;
+        this.burndownChart.data.datasets[0].data = data.burndown_chart.planned;
+        this.burndownChart.data.datasets[1].data = data.burndown_chart.actual;
+        this.burndownChart.update();
+      }
 
       // 2. Update Line Chart (Curved lines logic)
       if (this.lineChart && data.line_chart) {
@@ -124,7 +138,7 @@ getPercentage(value: number | undefined): string {
     if (this.lineCanvas) {
       this.lineChart = new Chart(this.lineCanvas.nativeElement, {
         type: 'line',
-        data: this.lineChartData, // Uses static data as fallback initially
+        data: this.lineChartData,
         options: this.lineChartOptions
       });
     }
@@ -132,8 +146,49 @@ getPercentage(value: number | undefined): string {
     if (this.donutCanvas) {
       this.donutChart = new Chart(this.donutCanvas.nativeElement, {
         type: 'doughnut',
-        data: this.donutChartData, // Uses static data as fallback initially
+        data: this.donutChartData,
         options: this.donutChartOptions
+      });
+    }
+
+    if (this.burndownCanvas) {
+      this.burndownChart = new Chart(this.burndownCanvas.nativeElement, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Planned',
+              data: [],
+              borderColor: '#6C5DD3',
+              backgroundColor: 'rgba(108,93,211,0.08)',
+              tension: 0.4,
+              borderWidth: 2,
+              pointRadius: 3,
+              fill: true
+            },
+            {
+              label: 'Actual',
+              data: [],
+              borderColor: '#FF754C',
+              backgroundColor: 'rgba(255,117,76,0.08)',
+              tension: 0.4,
+              borderWidth: 2,
+              pointRadius: 3,
+              borderDash: [5, 3],
+              fill: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#F3F4F6' }, border: { display: false }, ticks: { precision: 0 } },
+            x: { grid: { display: false }, border: { display: false } }
+          }
+        }
       });
     }
   }

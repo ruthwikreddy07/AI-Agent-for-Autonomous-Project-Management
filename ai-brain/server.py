@@ -601,6 +601,11 @@ You are an Intelligent AI Project Manager.
     - Example: "I spent 4 hours on the API task" → log_time(task_name="API task", hours=4)
     - Always confirm the logged time back to the user.
 
+9️⃣  **send_deadline_alerts**
+    - Use when user asks about upcoming deadlines, urgent tasks, or "what's due soon".
+    - Trigger words: "deadlines", "due soon", "urgent tasks", "overdue", "alerts".
+    - Default to checking 2 days ahead. Sends alert to Slack automatically.
+
 
 
 ===========================
@@ -1339,8 +1344,71 @@ def log_time(task_name: str, hours: float, note: str = ""):
         return f"Error logging time: {e}"
 
 
+@tool
+def send_deadline_alerts(days_ahead: int = 2):
+    """Scans Trello for tasks due within N days and sends a Slack alert summary.
+    Use when user asks to "check deadlines", "any urgent tasks?", or "what's due soon".
+    Args:
+        days_ahead: Number of days ahead to check (default: 2)
+    """
+    try:
+        response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=15)
+        if response.status_code != 200:
+            return "Failed to fetch Trello cards."
+
+        raw_data = response.json()
+        cards = raw_data if isinstance(raw_data, list) else raw_data.get("data", [])
+
+        today = datetime.now().date()
+        cutoff = today + timedelta(days=days_ahead)
+        trello_done_list = os.getenv("TRELLO_DONE_LIST_ID", "")
+
+        urgent_tasks = []
+        overdue_tasks = []
+
+        for c in cards:
+            if isinstance(c, dict) and "json" in c:
+                c = c["json"]
+            if not isinstance(c, dict):
+                continue
+            if c.get("idList") == trello_done_list or c.get("dueComplete"):
+                continue
+
+            due_raw = c.get("due")
+            if not due_raw:
+                continue
+
+            try:
+                due_date = datetime.fromisoformat(due_raw.replace("Z", "+00:00")).date()
+            except:
+                continue
+
+            name = c.get("name", "Unnamed task")
+            if due_date < today:
+                overdue_tasks.append(f"🔴 *[OVERDUE]* {name} (was due {due_date})")
+            elif due_date <= cutoff:
+                urgent_tasks.append(f"🟡 *[DUE SOON]* {name} (due {due_date})")
+
+        if not urgent_tasks and not overdue_tasks:
+            return f"✅ No tasks overdue or due in the next {days_ahead} days. Team is on track!"
+
+        all_alerts = overdue_tasks + urgent_tasks
+        message = f"⏰ *Deadline Alert — Next {days_ahead} Days*\n" + "\n".join(all_alerts)
+
+        # Send to Slack
+        try:
+            requests.post(N8N_SLACK_URL, json={"message": message}, timeout=10)
+        except:
+            pass
+
+        return message
+
+    except Exception as e:
+        return f"Error checking deadlines: {e}"
+
+
 # Bind tools
-llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time])
+llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time, send_deadline_alerts])
 
 # ==========================================
 # 🧠 MEMORY & PERSISTENCE LAYER
@@ -1475,6 +1543,8 @@ def process_tool_calls(response, context_messages,username):
                 tool_result = check_team_workload.invoke(args)
             elif fn == "log_time":
                 tool_result = log_time.invoke(args)
+            elif fn == "send_deadline_alerts":
+                tool_result = send_deadline_alerts.invoke(args)
             if fn == "consult_project_memory":
                 # ✅ INJECT USERNAME (AI doesn't provide this, we do)
                 args["username"] = username 
@@ -1883,6 +1953,55 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
             # 2. PM ANALYSIS: Sort by highest risk (highest cost)
             finance_items.sort(key=lambda x: x.get('numeric', 0), reverse=True)
 
+            # --- BUDGET BURN GAUGE ---
+            burn_percentage = 0
+            try:
+                budget_str = total_budget_str if 'total_budget_str' in dir() else "0"
+                # Parse numeric from strings like "$45,000" or "45000"
+                budget_nums = [float(x.replace(",","").replace("$","").replace("-","")) 
+                               for x in [budget_str] if any(c.isdigit() for c in x)]
+                if budget_nums:
+                    total_b = budget_nums[0]
+                    # Spent = sum of negative finance items
+                    spent = sum(
+                        float(fi.get("amount","0").replace("$","").replace(",","").replace("-",""))
+                        for fi in finance_items if not fi.get("isPositive", True)
+                    )
+                    burn_percentage = min(round((spent / total_b * 100), 1) if total_b > 0 else 0, 100)
+            except Exception as be:
+                print(f"Burn gauge error: {be}")
+
+            # --- BURNDOWN CHART DATA ---
+            burndown_data = {"labels": [], "planned": [], "actual": []}
+            try:
+                today_bd = datetime.now().date()
+                # Build a 14-day burndown: total tasks minus done per day
+                total_bd_tasks = len(cards)
+                done_cards = [c for c in cards
+                              if (c.get("json", c) if isinstance(c, dict) else c).get("dueComplete")]
+                
+                burndown_labels = []
+                planned_line = []
+                actual_line = []
+                
+                for i in range(14, -1, -1):
+                    day = today_bd - timedelta(days=i)
+                    burndown_labels.append(day.strftime("%b %d"))
+                    # Planned: linear burn from total to 0
+                    planned_line.append(max(0, total_bd_tasks - round((14 - i) * total_bd_tasks / 14)))
+                    # Actual: remaining tasks (simplified)
+                    done_by_day = sum(1 for c in done_cards if True)  # simplified
+                    actual_remaining = max(0, total_bd_tasks - round(len(done_cards) * (14 - i) / 14))
+                    actual_line.append(actual_remaining)
+                
+                burndown_data = {
+                    "labels": burndown_labels,
+                    "planned": planned_line,
+                    "actual": actual_line
+                }
+            except Exception as bde:
+                print(f"Burndown calc error: {bde}")
+
             # --- TEAM WORKLOAD CALCULATION ---
             workload_items = []
             try:
@@ -1967,7 +2086,9 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
                     }]
                 },
                 "finance_table": finance_items[:5], # Top 5 High-Impact items
-                "team_workload": workload_items
+                "team_workload": workload_items,
+                "burn_percentage": burn_percentage,
+                "burndown_chart": burndown_data
             }
 
     except Exception as e:

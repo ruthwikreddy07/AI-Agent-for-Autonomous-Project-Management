@@ -359,4 +359,47 @@ canvas#donutCanvas {
 :host-context(body.dark-theme) .modal-box h3 { color: #F8FAFC; }
 :host-context(body.dark-theme) .modal-input { background: #0B1120; border-color: #334155; color: #F8FAFC; }
 :host-context(body.dark-theme) .btn-add-project { border-color: #334155; color: #94A3B8; }
-:host-context(body.dark-theme) .active-project { background: #1F2937; }
+:host-context(body.dark-theme) .active-project { background: #1F2937; }
+
+/* --- BUDGET BURN GAUGE --- */
+.burn-card { display: flex; flex-direction: column; }
+.burn-gauge-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  margin-top: 8px;
+}
+.burn-gauge-svg {
+  width: 130px;
+  height: 75px;
+  overflow: visible;
+}
+.burn-label {
+  position: absolute;
+  bottom: 0;
+  text-align: center;
+}
+.burn-value {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.5px;
+}
+.burn-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Dark mode burn gauge */
+:host-context(body.dark-theme) .burn-value { color: #F8FAFC; }
+
+/* --- dot.red for burndown legend --- */
+.dot.red { background: var(--brand-red); }
+

@@ -205,12 +205,31 @@
         <div class="stat-trend negative"><span class="badge badge-red">+18%</span> vs. last week</div>
       </div>
 
-      <div class="stat-card">
+      <div class="stat-card burn-card">
         <div class="stat-top">
-          <span class="stat-title">Completed Tasks</span>
+          <span class="stat-title">Budget Burn</span>
+          <span class="badge" [ngClass]="{
+            'badge-green': stats.burn_percentage < 60,
+            'badge-purple': stats.burn_percentage >= 60 && stats.burn_percentage < 85,
+            'badge-red': stats.burn_percentage >= 85
+          }">{{ stats.burn_percentage || 0 }}%</span>
         </div>
-        <div class="stat-value">{{ stats.resolved_risks }}</div>
-        <div class="stat-trend positive"><span class="badge badge-blue">+20%</span> vs. last week</div>
+        <div class="burn-gauge-wrap">
+          <svg viewBox="0 0 120 70" class="burn-gauge-svg">
+            <!-- Track arc -->
+            <path d="M10,70 A60,60 0 0,1 110,70" fill="none" stroke="#F0F0F0" stroke-width="12" stroke-linecap="round"/>
+            <!-- Fill arc (dasharray trick) -->
+            <path d="M10,70 A60,60 0 0,1 110,70" fill="none"
+              [attr.stroke]="stats.burn_percentage >= 85 ? '#FF754C' : stats.burn_percentage >= 60 ? '#6C5DD3' : '#34AA44'"
+              stroke-width="12" stroke-linecap="round"
+              [attr.stroke-dasharray]="(stats.burn_percentage || 0) * 1.57 + ' 157'"
+              stroke-dashoffset="0"/>
+          </svg>
+          <div class="burn-label">
+            <span class="burn-value">{{ stats.total_budget }}</span>
+            <span class="burn-sub">Total Budget</span>
+          </div>
+        </div>
       </div>
 
     </section>
@@ -222,7 +241,6 @@
             <h3>Project Progress Overview</h3>
             <span class="subtitle">Track AI task completion and sprint velocity.</span>
           </div>
-
         </div>
         <div class="legend-custom">
           <span><span class="dot purple"></span> Completed</span>
@@ -231,6 +249,23 @@
         </div>
         <div class="chart-wrapper line-height">
           <canvas #lineCanvas></canvas>
+        </div>
+      </div>
+
+      <!-- BURNDOWN CHART -->
+      <div class="ui-card flex-1">
+        <div class="card-header">
+          <div>
+            <h3>Sprint Burndown</h3>
+            <span class="subtitle">Planned vs. actual task completion.</span>
+          </div>
+        </div>
+        <div class="legend-custom">
+          <span><span class="dot purple"></span> Planned</span>
+          <span><span class="dot red"></span> Actual</span>
+        </div>
+        <div class="chart-wrapper line-height">
+          <canvas #burndownCanvas></canvas>
         </div>
       </div>
 
