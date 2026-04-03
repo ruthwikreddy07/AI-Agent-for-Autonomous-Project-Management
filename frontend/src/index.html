@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Autonomous AI Project Manager — An intelligent agent that reasons, plans, and executes project management workflows powered by Groq LLMs, Gemini Embeddings, and Pinecone Vector Memory.">
+    <title>Autonomous AI Project Manager | Intelligent Project Orchestration</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <!-- Scroll Progress Bar -->
+    <div class="scroll-progress" id="scroll-progress"></div>
+
+    <!-- Custom Cursor Glow -->
+    <div class="cursor-glow" id="cursor-glow"></div>
+
+    <!-- Mouse Spotlight -->
+    <div class="mouse-spotlight" id="mouse-spotlight"></div>
+
+    <!-- Animated Background -->
+    <canvas id="neural-canvas"></canvas>
+
+    <!-- Navigation -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="#" class="nav-logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="url(#logoGrad)" stroke-width="2.5"/><path d="M10 20L16 10L22 20" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="3" fill="url(#logoGrad)"/><defs><linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+                </div>
+                <span>AI Project Manager</span>
+            </a>
+            <div class="nav-links" id="nav-links">
+                <a href="#features">Features</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#integrations">Integrations</a>
+                <a href="#demo">Demo</a>
+                <a href="#tech-stack">Tech Stack</a>
+            </div>
+            <div class="nav-actions">
+                <a href="http://localhost:4200" target="_blank" class="btn btn-ghost">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                    Open Dashboard
+                </a>
+                <a href="https://github.com/ruthwikreddy07/AI-Agent-for-Autonomous-Project-Management" target="_blank" class="btn btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    GitHub
+                </a>
+            </div>
+            <button class="mobile-toggle" id="mobile-toggle" aria-label="Toggle navigation">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="hero">
+        <div class="hero-glow"></div>
+        <div class="hero-content">
+            <div class="hero-badge">
+                <span class="badge-dot"></span>
+                <span>Powered by Groq LLMs &amp; LangChain</span>
+            </div>
+            <h1 class="hero-title">
+                <span class="title-line">Autonomous AI</span>
+                <span class="title-line gradient-text">Project Manager</span>
+            </h1>
+            <p class="hero-subtitle">An intelligent agent that autonomously reasons, plans, and executes project management workflows — with self-healing schedules, cost-aware planning, and real-time integrations.</p>
+            <div class="hero-actions">
+                <a href="http://localhost:4200" target="_blank" class="btn btn-lg btn-primary btn-glow">
+                    <span>Launch Dashboard</span>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                </a>
+                <a href="https://github.com/ruthwikreddy07/AI-Agent-for-Autonomous-Project-Management" target="_blank" class="btn btn-lg btn-outline">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    <span>View on GitHub</span>
+                </a>
+            </div>
+            <div class="hero-stats">
+                <div class="stat-item"><span class="stat-number" data-target="7">0</span><span class="stat-label">AI Tools</span></div>
+                <div class="stat-divider"></div>
+                <div class="stat-item"><span class="stat-number" data-target="8">0</span><span class="stat-label">n8n Workflows</span></div>
+                <div class="stat-divider"></div>
+                <div class="stat-item"><span class="stat-number" data-target="17">0</span><span class="stat-label">API Endpoints</span></div>
+                <div class="stat-divider"></div>
+                <div class="stat-item"><span class="stat-number" data-target="5">0</span><span class="stat-label">Integrations</span></div>
+            </div>
+        </div>
+        <div class="hero-visual">
+            <div class="hero-image-wrapper">
+                <img src="hero-brain.png" alt="AI Neural Network Brain Visualization" class="hero-image">
+                <div class="orbit-ring ring-1"><div class="orbit-dot"></div></div>
+                <div class="orbit-ring ring-2"><div class="orbit-dot"></div></div>
+                <div class="orbit-ring ring-3"><div class="orbit-dot"></div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Scrolling Ticker -->
+    <div class="ticker-strip">
+        <div class="ticker-content">
+            <span>🧠 LangChain Tool Orchestration</span><span class="ticker-dot">◆</span>
+            <span>⚡ Groq Llama 3.1 Inference</span><span class="ticker-dot">◆</span>
+            <span>🔁 Self-Healing Schedules</span><span class="ticker-dot">◆</span>
+            <span>💰 Cost-Aware Planning</span><span class="ticker-dot">◆</span>
+            <span>📊 Real-Time Analytics</span><span class="ticker-dot">◆</span>
+            <span>🔗 Trello + Slack + Calendar</span><span class="ticker-dot">◆</span>
+            <span>🛡️ JWT Authentication</span><span class="ticker-dot">◆</span>
+            <span>📄 RAG Document Memory</span><span class="ticker-dot">◆</span>
+            <span>🧠 LangChain Tool Orchestration</span><span class="ticker-dot">◆</span>
+            <span>⚡ Groq Llama 3.1 Inference</span><span class="ticker-dot">◆</span>
+            <span>🔁 Self-Healing Schedules</span><span class="ticker-dot">◆</span>
+            <span>💰 Cost-Aware Planning</span><span class="ticker-dot">◆</span>
+            <span>📊 Real-Time Analytics</span><span class="ticker-dot">◆</span>
+            <span>🔗 Trello + Slack + Calendar</span><span class="ticker-dot">◆</span>
+            <span>🛡️ JWT Authentication</span><span class="ticker-dot">◆</span>
+            <span>📄 RAG Document Memory</span><span class="ticker-dot">◆</span>
+        </div>
+    </div>
+
+    <!-- How It Works Section -->
+    <section class="section how-it-works" id="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">How It Works</span>
+                <h2 class="section-title">From Goal to <span class="gradient-text">Execution</span></h2>
+                <p class="section-desc">Enter a high-level goal. The AI breaks it down, assigns tasks, manages budgets, and executes — all autonomously.</p>
+            </div>
+            <div class="pipeline">
+                <div class="pipeline-step" data-step="1">
+                    <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></div>
+                    <h3>Define Goal</h3>
+                    <p>Enter a high-level project goal in natural language</p>
+                </div>
+                <div class="pipeline-connector"><svg viewBox="0 0 40 12"><path d="M0 6h36M30 1l6 5-6 5" stroke="url(#connGrad)" stroke-width="2" fill="none"/><defs><linearGradient id="connGrad"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs></svg></div>
+                <div class="pipeline-step" data-step="2">
+                    <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></div>
+                    <h3>AI Decomposes</h3>
+                    <p>Tasks generated with dependencies and cost estimates</p>
+                </div>
+                <div class="pipeline-connector"><svg viewBox="0 0 40 12"><path d="M0 6h36M30 1l6 5-6 5" stroke="url(#connGrad)" stroke-width="2" fill="none"/></svg></div>
+                <div class="pipeline-step" data-step="3">
+                    <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div>
+                    <h3>Auto-Assign</h3>
+                    <p>Skill-matched team members assigned automatically</p>
+                </div>
+                <div class="pipeline-connector"><svg viewBox="0 0 40 12"><path d="M0 6h36M30 1l6 5-6 5" stroke="url(#connGrad)" stroke-width="2" fill="none"/></svg></div>
+                <div class="pipeline-step" data-step="4">
+                    <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+                    <h3>Approve & Execute</h3>
+                    <p>One-click approval triggers Trello, Slack, and Calendar</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section class="section features" id="features">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Core Capabilities</span>
+                <h2 class="section-title">Enterprise-Grade <span class="gradient-text">AI Features</span></h2>
+                <p class="section-desc">Seven specialized LangChain tools working in concert to deliver autonomous project orchestration.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card featured">
+                    <div class="feature-icon icon-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></div>
+                    <h3>Intelligent Planning</h3>
+                    <p>Decomposes goals into ordered tasks with topological sorting, smart timelines that skip weekends/holidays, and per-task budget estimation.</p>
+                    <div class="feature-tag">execute_project_plan</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></div>
+                    <h3>Self-Healing Schedules</h3>
+                    <p>Detects overdue tasks, reschedules to next business day, and cascades changes through entire dependency chains.</p>
+                    <div class="feature-tag">heal_project_schedule</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-cyan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div>
+                    <h3>Skill-Based Assignment</h3>
+                    <p>Scans MongoDB roster, matches task keywords to skills and roles, resolves Trello member IDs automatically.</p>
+                    <div class="feature-tag">auto_assign_owner</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></div>
+                    <h3>RAG Project Memory</h3>
+                    <p>Upload documents, chunk and embed via Gemini, store in Pinecone for context-aware AI responses.</p>
+                    <div class="feature-tag">consult_project_memory</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>
+                    <h3>Calendar Management</h3>
+                    <p>Two-step availability check + booking flow with Google Meet links, focus time blocks, and smart slot discovery.</p>
+                    <div class="feature-tag">schedule_meeting_tool</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon icon-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg></div>
+                    <h3>Human-in-the-Loop</h3>
+                    <p>All plans require explicit manager approval before execution. Full transparency with cost breakdowns and timelines.</p>
+                    <div class="feature-tag">approve / reject</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section class="section architecture" id="architecture">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">System Design</span>
+                <h2 class="section-title">Production-Grade <span class="gradient-text">Architecture</span></h2>
+                <p class="section-desc">A multi-layered system with Angular SSR frontend, FastAPI backend, AI reasoning engine, and n8n automation middleware.</p>
+            </div>
+            <div class="arch-diagram">
+                <div class="arch-layer" data-layer="frontend">
+                    <div class="layer-label">Frontend Layer</div>
+                    <div class="arch-nodes">
+                        <div class="arch-node node-frontend"><span class="node-icon">🅰️</span><span>Angular 20 SSR</span><span class="node-sub">5 Page Components</span></div>
+                        <div class="arch-node node-frontend"><span class="node-icon">📊</span><span>Chart.js</span><span class="node-sub">Line + Donut Charts</span></div>
+                    </div>
+                </div>
+                <div class="arch-flow-line"><svg viewBox="0 0 4 40"><line x1="2" y1="0" x2="2" y2="40" stroke="url(#flowGrad)" stroke-width="2" stroke-dasharray="4,4"/><defs><linearGradient id="flowGrad" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs></svg><span class="flow-label">HTTP + JWT</span></div>
+                <div class="arch-layer" data-layer="backend">
+                    <div class="layer-label">AI Brain — Core Backend</div>
+                    <div class="arch-nodes">
+                        <div class="arch-node node-backend"><span class="node-icon">⚡</span><span>FastAPI</span><span class="node-sub">17 Endpoints</span></div>
+                        <div class="arch-node node-backend"><span class="node-icon">🔗</span><span>LangChain</span><span class="node-sub">7 Bound Tools</span></div>
+                        <div class="arch-node node-backend"><span class="node-icon">🔄</span><span>Self-Healer</span><span class="node-sub">Auto-Reschedule</span></div>
+                        <div class="arch-node node-backend"><span class="node-icon">📋</span><span>Planner</span><span class="node-sub">Topological Sort</span></div>
+                    </div>
+                </div>
+                <div class="arch-flow-line"><svg viewBox="0 0 4 40"><line x1="2" y1="0" x2="2" y2="40" stroke="url(#flowGrad)" stroke-width="2" stroke-dasharray="4,4"/></svg><span class="flow-label">LLM Inference + Embeddings</span></div>
+                <div class="arch-layer" data-layer="ai">
+                    <div class="layer-label">AI & Database Layer</div>
+                    <div class="arch-nodes">
+                        <div class="arch-node node-ai"><span class="node-icon">🧠</span><span>Groq LLM</span><span class="node-sub">Llama 3.1 / 3.3</span></div>
+                        <div class="arch-node node-ai"><span class="node-icon">💎</span><span>Gemini</span><span class="node-sub">Embeddings</span></div>
+                        <div class="arch-node node-db"><span class="node-icon">🍃</span><span>MongoDB</span><span class="node-sub">Users & Chat</span></div>
+                        <div class="arch-node node-db"><span class="node-icon">🌲</span><span>Pinecone</span><span class="node-sub">Vector Memory</span></div>
+                    </div>
+                </div>
+                <div class="arch-flow-line"><svg viewBox="0 0 4 40"><line x1="2" y1="0" x2="2" y2="40" stroke="url(#flowGrad)" stroke-width="2" stroke-dasharray="4,4"/></svg><span class="flow-label">Webhooks</span></div>
+                <div class="arch-layer" data-layer="integrations">
+                    <div class="layer-label">n8n Automation Layer — 8 Workflows</div>
+                    <div class="arch-nodes">
+                        <div class="arch-node node-ext"><span class="node-icon">📋</span><span>Trello</span></div>
+                        <div class="arch-node node-ext"><span class="node-icon">💬</span><span>Slack</span></div>
+                        <div class="arch-node node-ext"><span class="node-icon">📅</span><span>Calendar</span></div>
+                        <div class="arch-node node-ext"><span class="node-icon">📧</span><span>Gmail</span></div>
+                        <div class="arch-node node-ext"><span class="node-icon">🐙</span><span>GitHub</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AI Reasoning Terminal -->
+    <section class="section ai-terminal-section" id="ai-terminal">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Live Agent</span>
+                <h2 class="section-title">Watch the AI <span class="gradient-text">Think</span></h2>
+                <p class="section-desc">See how the autonomous agent reasons through tool selection, task decomposition, and execution in real time.</p>
+            </div>
+            <div class="terminal-window">
+                <div class="terminal-header">
+                    <span class="frame-dot red"></span>
+                    <span class="frame-dot yellow"></span>
+                    <span class="frame-dot green"></span>
+                    <span class="terminal-title">ai-brain — agent reasoning loop</span>
+                </div>
+                <div class="terminal-body" id="terminal-body">
+                    <div class="terminal-line"><span class="t-prompt">$</span> <span class="t-cmd">python server.py</span></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Integrations Section -->
+    <section class="section integrations" id="integrations">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Integrations</span>
+                <h2 class="section-title">Connected <span class="gradient-text">Ecosystem</span></h2>
+                <p class="section-desc">Eight active n8n workflows bridging your entire tool stack into one autonomous system.</p>
+            </div>
+            <div class="integrations-grid">
+                <div class="integration-card"><div class="int-icon" style="--accent:#0079BF"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 2H3c-.5 0-1 .5-1 1v18c0 .5.5 1 1 1h18c.5 0 1-.5 1-1V3c0-.5-.5-1-1-1zM10.4 18.8H5.2c-.4 0-.7-.3-.7-.7V5.2c0-.4.3-.7.7-.7h5.2c.4 0 .7.3.7.7v12.9c0 .4-.3.7-.7.7zm8.4-6H13.6c-.4 0-.7-.3-.7-.7V5.2c0-.4.3-.7.7-.7h5.2c.4 0 .7.3.7.7v6.9c0 .4-.3.7-.7.7z"/></svg></div><h3>Trello</h3><p>Auto-create labelled cards with assignees, due dates, and dependency annotations</p></div>
+                <div class="integration-card"><div class="int-icon" style="--accent:#4A154B"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg></div><h3>Slack</h3><p>Automated announcements, standup reports, meeting alerts, and urgent notifications</p></div>
+                <div class="integration-card"><div class="int-icon" style="--accent:#4285F4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg></div><h3>Google Calendar</h3><p>Smart availability checking, meeting booking with Meet links, and focus time scheduling</p></div>
+                <div class="integration-card"><div class="int-icon" style="--accent:#EA4335"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></svg></div><h3>Gmail</h3><p>Emergency email alerts dispatched to assignees when tasks are flagged as critical</p></div>
+                <div class="integration-card"><div class="int-icon" style="--accent:#f5f5f5"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></div><h3>GitHub</h3><p>Push webhook sync — commit messages auto-move Trello cards between lists</p></div>
+                <div class="integration-card"><div class="int-icon" style="--accent:#EA4B71"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-.857 17.571H7.714v-3.428h3.429v3.428zm4.286 0h-3.429v-3.428h3.429v3.428zm0-4.285H7.714V6.429h7.715v6.857z"/></svg></div><h3>n8n</h3><p>8 active automation workflows — the middleware brain connecting all integrations</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Demo Preview Section -->
+    <section class="section demo" id="demo">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Live Preview</span>
+                <h2 class="section-title">See It In <span class="gradient-text">Action</span></h2>
+                <p class="section-desc">A fully interactive Angular 20 SSR dashboard with real-time Trello analytics, AI chat, and team management.</p>
+            </div>
+            <div class="demo-tabs">
+                <button class="demo-tab active" data-tab="dashboard">📊 Dashboard</button>
+                <button class="demo-tab" data-tab="chat">💬 AI Chat</button>
+            </div>
+            <div class="demo-showcase">
+                <div class="demo-panel active" id="panel-dashboard">
+                    <div class="demo-frame">
+                        <div class="frame-header"><span class="frame-dot red"></span><span class="frame-dot yellow"></span><span class="frame-dot green"></span><span class="frame-url">localhost:4200/dashboard</span></div>
+                        <img src="dashboard-preview.png" alt="AI Project Manager Dashboard Preview" class="demo-img">
+                    </div>
+                    <div class="demo-features">
+                        <div class="demo-feat"><span>📈</span> Real-time task timeline (14-day line chart)</div>
+                        <div class="demo-feat"><span>🍩</span> Task status distribution (donut chart)</div>
+                        <div class="demo-feat"><span>💰</span> Financial burn rate analysis table</div>
+                        <div class="demo-feat"><span>🤖</span> Active n8n workflow counter</div>
+                    </div>
+                    <div style="text-align:center;margin-top:20px">
+                        <a href="http://localhost:4200/dashboard" target="_blank" class="btn btn-primary btn-glow">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                            <span>Open Dashboard</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="demo-panel" id="panel-chat">
+                    <div class="demo-frame">
+                        <div class="frame-header"><span class="frame-dot red"></span><span class="frame-dot yellow"></span><span class="frame-dot green"></span><span class="frame-url">localhost:4200/chat</span></div>
+                        <img src="chat-preview.png" alt="AI Chat Interface Preview" class="demo-img">
+                    </div>
+                    <div class="demo-features">
+                        <div class="demo-feat"><span>🧠</span> Natural language project planning</div>
+                        <div class="demo-feat"><span>✅</span> One-click plan approval / rejection</div>
+                        <div class="demo-feat"><span>📄</span> Document upload with RAG retrieval</div>
+                        <div class="demo-feat"><span>💬</span> Session-based chat memory</div>
+                    </div>
+                    <div style="text-align:center;margin-top:20px">
+                        <a href="http://localhost:4200/chat" target="_blank" class="btn btn-primary btn-glow">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                            <span>Open AI Chat</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tech Stack Section -->
+    <section class="section tech-stack" id="tech-stack">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Technology</span>
+                <h2 class="section-title">Built With <span class="gradient-text">Modern Stack</span></h2>
+            </div>
+            <div class="tech-grid">
+                <div class="tech-card"><div class="tech-logo">🐍</div><span>Python</span></div>
+                <div class="tech-card"><div class="tech-logo">⚡</div><span>FastAPI</span></div>
+                <div class="tech-card"><div class="tech-logo">🅰️</div><span>Angular 20</span></div>
+                <div class="tech-card"><div class="tech-logo">🧠</div><span>Groq</span></div>
+                <div class="tech-card"><div class="tech-logo">🔗</div><span>LangChain</span></div>
+                <div class="tech-card"><div class="tech-logo">💎</div><span>Gemini</span></div>
+                <div class="tech-card"><div class="tech-logo">🍃</div><span>MongoDB</span></div>
+                <div class="tech-card"><div class="tech-logo">🌲</div><span>Pinecone</span></div>
+                <div class="tech-card"><div class="tech-logo">🔁</div><span>n8n</span></div>
+                <div class="tech-card"><div class="tech-logo">🔐</div><span>JWT Auth</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="section cta" id="cta">
+        <div class="container">
+            <div class="cta-card">
+                <div class="cta-glow"></div>
+                <h2>Ready to Automate Your<br><span class="gradient-text">Project Management?</span></h2>
+                <p>Clone the repo, configure your integrations, and let the AI handle the rest.</p>
+                <div class="cta-actions">
+                    <a href="http://localhost:4200" target="_blank" class="btn btn-lg btn-primary btn-glow">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                        <span>Launch Dashboard</span>
+                    </a>
+                    <a href="https://github.com/ruthwikreddy07/AI-Agent-for-Autonomous-Project-Management" target="_blank" class="btn btn-lg btn-outline">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                        <span>Clone Repository</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="nav-logo">
+                        <div class="logo-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="url(#logoGrad2)" stroke-width="2.5"/><path d="M10 20L16 10L22 20" stroke="url(#logoGrad2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="3" fill="url(#logoGrad2)"/><defs><linearGradient id="logoGrad2" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs></svg></div>
+                        <span>AI Project Manager</span>
+                    </div>
+                    <p>Autonomous AI-powered project orchestration for modern teams.</p>
+                </div>
+                <div class="footer-team">
+                    <h4>Built By</h4>
+                    <a href="https://github.com/ruthwikreddy07" target="_blank">Ruthwik Reddy</a>
+                    <a href="https://github.com/Ninishareddy49" target="_blank">Ninisha Reddy</a>
+                    <a href="https://github.com/ashureddy02" target="_blank">Ashritha Reddy</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Autonomous AI Project Manager. MIT License.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="main.js"></script>
+</body>
+</html>
