@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Chart, registerables, ChartConfiguration, ChartOptions } from 'chart.js';
 import { Component, OnInit, Output, EventEmitter, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { AiService } from '../ai.service';
@@ -10,7 +11,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './dashboard.html',
   styleUrls: ['./dashboard.css']
 })
@@ -20,7 +21,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   @ViewChild('donutCanvas', { static: false }) donutCanvas!: ElementRef<HTMLCanvasElement>;
 
   // Variables bound to your HTML {{ }}
-stats = {
+stats: any = {
   tasks_due: 0,
   overdue: 0,
   active: 0,
@@ -31,9 +32,16 @@ stats = {
   total_budget: '$0',
   current_project: '',
   recent_projects: [] as string[],
-  user_display_name: 'Project Manager' // 👈 ADD THIS LINE
+  user_display_name: 'Project Manager',
+  team_workload: []
 };
   financeData: any[] = [];
+
+  // --- Multi-Project ---
+  projects: any[] = [];
+  activeProjectName: string = '';
+  showProjectModal = false;
+  newProject = { name: '', trello_board_url: '', n8n_trello_webhook: '', n8n_get_cards_url: '' };
   
   private lineChart!: Chart;
   private donutChart!: Chart;
@@ -41,9 +49,9 @@ stats = {
   constructor(private cdr: ChangeDetectorRef,private aiService: AiService) {} // 👈 Added AiService injection
 
   ngOnInit(): void {
-    // 👈 Added this function call to fetch real data on load
     this.loadRealData();
     this.loadTrelloLink();
+    this.loadProjects();
   }
 
   ngAfterViewInit(): void {
@@ -66,10 +74,11 @@ stats = {
         total_team: data.total_team,
         in_progress: data.in_progress,
         not_started: data.not_started,
-        total_budget: data.total_budget,    // 👈 MAP THIS
-  current_project: data.current_project, // 👈 MAP THIS
-  recent_projects: data.recent_projects,
-  user_display_name: data.user_display_name  // 👈 MAP THIS
+        total_budget: data.total_budget,
+        current_project: data.current_project,
+        recent_projects: data.recent_projects,
+        user_display_name: data.user_display_name,
+        team_workload: data.team_workload || []
       };
 
       this.financeData = data.finance_table;
@@ -150,6 +159,46 @@ openTrello() {
     alert('⚠️ Please set your Trello Board URL in Settings first!');
   }
 }
+
+  // --- PROJECT METHODS ---
+  loadProjects() {
+    this.aiService.getProjects().subscribe({
+      next: (data: any[]) => {
+        this.projects = data;
+        if (data.length > 0 && !this.activeProjectName) {
+          this.activeProjectName = data[0].name;
+        }
+      },
+      error: (err: any) => console.error('Failed to load projects:', err)
+    });
+  }
+
+  switchProject(project: any) {
+    this.activeProjectName = project.name;
+    this.loadRealData();
+  }
+
+  createProject() {
+    if (!this.newProject.name) return;
+    this.aiService.createProject(this.newProject).subscribe({
+      next: () => {
+        this.showProjectModal = false;
+        this.newProject = { name: '', trello_board_url: '', n8n_trello_webhook: '', n8n_get_cards_url: '' };
+        this.loadProjects();
+      },
+      error: (err: any) => console.error('Failed to create project:', err)
+    });
+  }
+
+  // --- WORKLOAD HELPER ---
+  getWorkloadColor(status: string): string {
+    switch (status) {
+      case 'overloaded': return '#FF754C';
+      case 'busy': return '#FFCE73';
+      case 'available': return '#34AA44';
+      default: return '#808191';
+    }
+  }
 
   // --- STATICS (Used as fallbacks or structure templates) ---
   

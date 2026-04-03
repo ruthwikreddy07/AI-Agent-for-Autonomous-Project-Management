@@ -150,12 +150,16 @@ client = None
 db = None
 users_collection = None
 employees_collection = None
+time_logs_collection = None
+projects_collection = None
 try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client["ai_project_manager"]
     users_collection = db["users"]
     employees_collection = db["employees"]
     chats_collection = db["chats"]
+    time_logs_collection = db["time_logs"]
+    projects_collection = db["projects"]
     client.admin.command("ping")
     print("✅ Connected to MongoDB")
 except Exception as e:
@@ -167,61 +171,8 @@ except Exception as e:
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-class Employee(BaseModel):
-    name: str
-    role: str
-    skills: List[str]
-    email: str
-    trello_id: Optional[str] = ""
-    rate: int = 50
-class ProfileUpdate(BaseModel):
-    display_name: str
-    email: str
-class User(BaseModel):
-    username: str
-    password: str
-class ApproveRequest(BaseModel):
-    session_id: str  # 🚀 This allows the backend to know which chat to save to
-class RejectRequest(BaseModel):
-    reason: str = "No reason provided."
-    session_id: str # 🚀 Add this to track which chat rejected it
-# --- 🆕 NEW MODELS FOR DASHBOARD ---
-class ChartDataSet(BaseModel):
-    label: str
-    data: List[int]
-    borderColor: Optional[str] = None
-    backgroundColor: Optional[List[str]] = None
+from models import *
 
-class ChartData(BaseModel):
-    labels: List[str]
-    datasets: List[ChartDataSet]
-
-class FinanceItem(BaseModel):
-    date: str
-    category: str
-    details: str
-    amount: str
-    status: str
-    isPositive: bool
-
-class DashboardStats(BaseModel):
-    tasks_due: int
-    overdue: int
-    active: int
-    resolved_risks: int
-    in_progress: int
-    not_started: int
-    total_team: int
-    total_budget: str        # 👈 ADD THIS
-    current_project: str     # 👈 ADD THIS
-    recent_projects: List[str] # 👈 ADD THIS
-    line_chart: ChartData
-    donut_chart: ChartData
-    finance_table: List[FinanceItem]
-
-class UserRequest(BaseModel):
-    message: str
-    session_id: str = "default_session"
 
 
 # --------------------
@@ -442,6 +393,33 @@ def auto_assign_owner(task_name: str, task_desc: str) -> str:
                 if keyword in role and keyword in text:
                     return emp["name"]
 
+        # --- STRATEGY 3: Workload-Aware Tiebreaker ---
+        # If multiple matches found via skill, pick the least loaded
+        if len(employees) > 1:
+            try:
+                response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=10)
+                if response.status_code == 200:
+                    raw_data = response.json()
+                    all_cards = raw_data if isinstance(raw_data, list) else raw_data.get("data", [])
+                    trello_done_list = os.getenv("TRELLO_DONE_LIST_ID", "6922b7e358b2e5d625ad65ba")
+                    
+                    owner_counts = {}
+                    for c in all_cards:
+                        if isinstance(c, dict) and "json" in c: c = c["json"]
+                        if not isinstance(c, dict): continue
+                        if c.get("idList") == trello_done_list or c.get("dueComplete"): continue
+                        card_name = c.get("name", "")
+                        if "[" in card_name and "]" in card_name:
+                            owner = card_name.split("]")[0].replace("[", "").strip()
+                            owner_counts[owner] = owner_counts.get(owner, 0) + 1
+                    
+                    # Sort employees by least tasks
+                    employees_sorted = sorted(employees, key=lambda e: owner_counts.get(e.get("name", ""), 0))
+                    if employees_sorted:
+                        return employees_sorted[0]["name"]
+            except:
+                pass
+
     except Exception as e:
         print(f"⚠️ Assignment Logic Error: {e}")
         pass
@@ -516,9 +494,17 @@ def estimate_due_date(task_name: str) -> str:
 # SYSTEM PROMPT
 # --------------------
 chat_history = []
-pending_plan = None
-current_risks = []
-current_budget_warning = ""
+user_states = {}
+
+def get_user_state(username: str):
+    if username not in user_states:
+        user_states[username] = {
+            "pending_plan": None,
+            "current_risks": [],
+            "current_budget_warning": ""
+        }
+    return user_states[username]
+
 def refresh_system_prompt():
     global chat_history
     roster = get_dynamic_roster()
@@ -603,6 +589,19 @@ You are an Intelligent AI Project Manager.
 6️⃣  heal_project_schedule
     - Use when the user asks to "Heal", "Fix", "Repair", or "Reschedule" the project.
     - This tool automatically moves overdue tasks and resolves dependency conflicts in Trello.
+
+7️⃣  **check_team_workload**
+    - Use when user asks about team capacity, workload, bandwidth, or "who is free".
+    - Trigger words: "workload", "capacity", "bandwidth", "who is free", "team load", "available".
+    - Returns active task count per team member with status indicators.
+
+8️⃣  **log_time**
+    - Use when a user reports time spent on a task.
+    - Trigger words: "spent", "worked", "logged", "hours on".
+    - Example: "I spent 4 hours on the API task" → log_time(task_name="API task", hours=4)
+    - Always confirm the logged time back to the user.
+
+
 
 ===========================
 📌  CRITICAL DECISION RULES
@@ -884,9 +883,9 @@ def schedule_meeting_tool(start_time: str, summary: str = "General Meeting", des
     return result
 
 @tool
-def execute_project_plan(goal: str, tasks: str | list, budget: float = 0):
+def execute_project_plan(goal: str, tasks: str | list, budget: float = 0, username: str = "default"):
     """Generates a multi-step plan. Tasks must be a JSON string. Budget is the max limit in dollars."""
-    global pending_plan, current_budget_warning
+    state = get_user_state(username)
     try:
         print(f"🧐 DEBUG RAW AI INPUT: {tasks}")
         print(f"💰 DEBUG BUDGET INPUT: {budget}")
@@ -969,7 +968,7 @@ def execute_project_plan(goal: str, tasks: str | list, budget: float = 0):
             })
         # --- RISK ANALYSIS ---
         # Default styling (No budget limit set)
-        current_budget_warning = "" # Reset warning
+        state['current_budget_warning'] = "" # Reset warning
 
         # If user set a limit, check it and change the styling
         if target_budget > 0:
@@ -981,7 +980,7 @@ def execute_project_plan(goal: str, tasks: str | list, budget: float = 0):
                     f"🚨 **Total:** ${total_project_cost}\n"
                     f"⚠️ **Over Budget by:** ${overrun}"
                 )
-                current_budget_warning = f"🚨 **BUDGET OVERRUN:** Plan exceeds limit by ${overrun}!"
+                state['current_budget_warning'] = f"🚨 **BUDGET OVERRUN:** Plan exceeds limit by ${overrun}!"
             
             else:
                 remaining = target_budget - total_project_cost
@@ -991,14 +990,14 @@ def execute_project_plan(goal: str, tasks: str | list, budget: float = 0):
                     f"✅ **Total:** ${total_project_cost}\n"
                     f"💰 **Under Budget:** ${remaining} remaining"
                 )
-                current_budget_warning = "" 
+                state['current_budget_warning'] = "" 
         else:
             # If no budget set, just show total neutral
             budget_status_msg = f"💵 **Total Project Cost:** ${total_project_cost}"
-            current_budget_warning = ""
+            state['current_budget_warning'] = ""
 
         # Save this pre-formatted message into the plan
-        pending_plan = {
+        state['pending_plan'] = {
             "goal": goal, 
             "tasks": clean_tasks, 
             "budget_summary": budget_status_msg 
@@ -1010,9 +1009,9 @@ def execute_project_plan(goal: str, tasks: str | list, budget: float = 0):
         return f"Error: {e}"
 
 @tool
-def check_project_status(dummy: str = ""):
+def check_project_status(dummy: str = "", username: str = "default"):
     """Checks Trello for overdue tasks AND active budget risks."""
-    global current_risks, current_budget_warning
+    state = get_user_state(username)
     try:
         risks = []
         try:
@@ -1086,10 +1085,10 @@ def check_project_status(dummy: str = ""):
             return "Failed to check project status."
 
         # Add Budget Risks
-        if current_budget_warning:
-            risks.insert(0, current_budget_warning)
+        if state['current_budget_warning']:
+            risks.insert(0, state['current_budget_warning'])
 
-        current_risks = risks
+        state['current_risks'] = risks
         
         if not risks:
             return "✅ ALL GOOD. No overdue tasks or budget issues."
@@ -1254,8 +1253,94 @@ def heal_project_schedule(dummy: str = ""):
         return f"Error healing: {e}"
     
 
+
+@tool
+def check_team_workload(dummy: str = ""):
+    """Checks the current workload of each team member by counting their active Trello cards.
+    Returns a summary of who is available, busy, or overloaded."""
+    try:
+        # 1. Fetch all cards from Trello
+        response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=15)
+        if response.status_code != 200:
+            return "Failed to fetch Trello data."
+        
+        raw_data = response.json()
+        cards = []
+        if isinstance(raw_data, list):
+            cards = raw_data
+        elif isinstance(raw_data, dict) and "data" in raw_data:
+            cards = raw_data["data"]
+        
+        # 2. Count active cards per owner
+        owner_counts = {}
+        trello_done_list = os.getenv("TRELLO_DONE_LIST_ID", "6922b7e358b2e5d625ad65ba")
+        
+        for c in cards:
+            if isinstance(c, dict) and "json" in c:
+                c = c["json"]
+            if not isinstance(c, dict):
+                continue
+            
+            # Skip completed cards
+            if c.get("idList") == trello_done_list or c.get("dueComplete") is True:
+                continue
+            
+            # Extract owner from [Owner] prefix in card name
+            card_name = c.get("name", "")
+            if "[" in card_name and "]" in card_name:
+                owner = card_name.split("]")[0].replace("[", "").strip()
+                owner_counts[owner] = owner_counts.get(owner, 0) + 1
+        
+        # 3. Cross-reference with employee roster
+        employees = list(employees_collection.find({}, {"_id": 0, "name": 1, "role": 1}))
+        
+        result_lines = []
+        for emp in employees:
+            name = emp.get("name", "Unknown")
+            role = emp.get("role", "")
+            count = owner_counts.get(name, 0)
+            
+            if count >= 6:
+                status = "🔴 OVERLOADED"
+            elif count >= 3:
+                status = "🟡 BUSY"
+            else:
+                status = "🟢 AVAILABLE"
+            
+            result_lines.append(f"{name} ({role}): {count} active tasks — {status}")
+        
+        if not result_lines:
+            return "No team members found in the roster."
+        
+        return "📊 **Team Workload Report:**\n" + "\n".join(result_lines)
+    except Exception as e:
+        return f"Error checking workload: {e}"
+
+
+@tool
+def log_time(task_name: str, hours: float, note: str = ""):
+    """Logs time spent on a task. Use when a team member reports hours worked.
+    Args:
+        task_name: The name of the task worked on
+        hours: Number of hours spent
+        note: Optional description of work done
+    """
+    try:
+        entry = {
+            "task_name": task_name,
+            "logged_by": "via_chat",
+            "hours": hours,
+            "note": note,
+            "timestamp": datetime.now()
+        }
+        time_logs_collection.insert_one(entry)
+        return f"✅ Logged {hours}h on \"{task_name}\". {('Note: ' + note) if note else ''}"
+    except Exception as e:
+        return f"Error logging time: {e}"
+
+
 # Bind tools
-llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool,heal_project_schedule])
+llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time])
 
 # ==========================================
 # 🧠 MEMORY & PERSISTENCE LAYER
@@ -1323,7 +1408,6 @@ def process_tool_calls(response, context_messages,username):
     Handles tool calls recursively. 
     Used by both /chat and /upload to ensure consistent behavior.
     """
-    global pending_plan # Access the global variable
     
     final_text = response.content
     approval_required = False
@@ -1355,10 +1439,12 @@ def process_tool_calls(response, context_messages,username):
 
             # --- A. PLANNING ---
             if fn == "execute_project_plan":
+                args['username'] = username
                 res = execute_project_plan.invoke(args)
                 if res == "PLAN_STAGED":
                     approval_required = True
-                    if pending_plan:
+                    if get_user_state(username)['pending_plan']:
+                        pending_plan = get_user_state(username)['pending_plan']
                         preview = "\n".join([f"• {t.get('name')} → {t.get('owner')}" for t in pending_plan["tasks"]])
                         budget = pending_plan.get("budget_summary", "")
                         final_text = f"I have drafted a plan based on the request:\n{budget}\n\n{preview}\n\nProceed?"
@@ -1373,6 +1459,7 @@ def process_tool_calls(response, context_messages,username):
                 send_slack_announcement.invoke(args)
                 tool_result = "Message sent."
             elif fn == "check_project_status":
+                args['username'] = username
                 tool_result = check_project_status.invoke(args)
             elif fn == "schedule_meeting_tool":
                 tool_result = schedule_meeting_tool.invoke(args)
@@ -1384,6 +1471,10 @@ def process_tool_calls(response, context_messages,username):
                     return str(tool_result), approval_required
             elif fn == "heal_project_schedule":
                 tool_result = heal_project_schedule.invoke(args)
+            elif fn == "check_team_workload":
+                tool_result = check_team_workload.invoke(args)
+            elif fn == "log_time":
+                tool_result = log_time.invoke(args)
             if fn == "consult_project_memory":
                 # ✅ INJECT USERNAME (AI doesn't provide this, we do)
                 args["username"] = username 
@@ -1484,7 +1575,7 @@ async def register(user: User):
     return {"msg": "Created"}
 
 @app.post("/employees")
-def add_employee(emp: Employee):
+def add_employee(emp: Employee, username: str = Depends(get_current_user)):
     try:
         if not emp.trello_id and emp.email:
             emp.trello_id = get_trello_id_by_email(emp.email)
@@ -1495,7 +1586,7 @@ def add_employee(emp: Employee):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/employees")
-def get_employees():
+def get_employees(username: str = Depends(get_current_user)):
     return list(employees_collection.find({}, {"_id": 0}))
 
 @app.post("/chat")
@@ -1518,7 +1609,7 @@ def chat_endpoint(req: UserRequest, username: str = Depends(get_current_user)):
     return {"reply": final_text, "approval_required": approval_required}
 
 @app.get("/chat/history/{session_id}")
-def get_full_history(session_id: str):
+def get_full_history(session_id: str, username: str = Depends(get_current_user)):
     """Returns the full chat history for the UI."""
     try:
         # Fetch all messages for this session, sorted oldest to newest
@@ -1531,8 +1622,8 @@ def get_full_history(session_id: str):
         return {"error": str(e)}
 
 @app.post("/approve")
-def approve_plan(req: ApproveRequest):
-    global pending_plan
+def approve_plan(req: ApproveRequest, username: str = Depends(get_current_user)):
+    pending_plan = get_user_state(username)['pending_plan']
     if not pending_plan:
         return {"status": "No plan."}
     results = []
@@ -1584,17 +1675,17 @@ def approve_plan(req: ApproveRequest):
     except Exception as e:
         print(f"❌ Error during save: {e}")
 
-    pending_plan = None
+    get_user_state(username)['pending_plan'] = None
     return {"reply": activation_msg}
 # 🚀 Update an existing employee
 @app.put("/employees/{email}")
-def update_employee(email: str, emp: Employee):
+def update_employee(email: str, emp: Employee, username: str = Depends(get_current_user)):
     employees_collection.update_one({"email": email}, {"$set": emp.dict()})
     return {"msg": "Updated successfully"}
 
 # 🚀 Delete an employee
 @app.delete("/employees/{email}")
-def delete_employee(email: str):
+def delete_employee(email: str, username: str = Depends(get_current_user)):
     employees_collection.delete_one({"email": email})
     return {"msg": "Deleted successfully"}
 
@@ -1607,7 +1698,7 @@ def reject_plan(req: RejectRequest): # 🚀 No longer Optional; we need that ses
     
     # 2. Clear the internal memory
     pending_plan = None
-    current_budget_warning = "" 
+    state['current_budget_warning'] = "" 
     
     # 3. Create a Professional Message
     reject_msg = f"❌ **Plan Rejected:** The execution strategy for '{proj_name}' has been cancelled.\n**Reason:** {req.reason}"
@@ -1617,23 +1708,23 @@ def reject_plan(req: RejectRequest): # 🚀 No longer Optional; we need that ses
 
 
     # 6. Force refresh project status to clear the dashboard warning
-    check_project_status.invoke({"dummy": "refresh"})
+    check_project_status.invoke({"dummy": "refresh", "username": username})
     
     # 7. Return to frontend for instant UI update
     return {"reply": reject_msg}
 
 @app.get("/risks")
-def get_risks():
+def get_risks(username: str = Depends(get_current_user)):
     """
     Force a refresh of the project status immediately 
     so the Frontend gets live data on load.
     """
     # 1. Run the check logic explicitly!
     # This updates the 'current_risks' global variable
-    check_project_status.invoke({"dummy": "refresh"})
+    check_project_status.invoke({"dummy": "refresh", "username": username})
     
     # 2. Return the freshly updated list
-    return {"risks": current_risks}
+    return {"risks": get_user_state(username)['current_risks']}
 
 
 # ==========================================
@@ -1731,11 +1822,14 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
 
                 # --- 1. STATUS & CHART LOGIC ---
                 list_id = c.get("idList")
-                is_done = (list_id == "6922b7e358b2e5d625ad65ba") or c.get("dueComplete") is True
+                trello_done_list = os.getenv("TRELLO_DONE_LIST_ID", "6922b7e358b2e5d625ad65ba")
+                trello_in_progress_list = os.getenv("TRELLO_IN_PROGRESS_LIST_ID", "6922b7e358b2e5d625ad65b9")
+                
+                is_done = (list_id == trello_done_list) or c.get("dueComplete") is True
 
                 if is_done:
                     status_counts["Completed"] += 1
-                elif list_id == "6922b7e358b2e5d625ad65b9":
+                elif list_id == trello_in_progress_list:
                     status_counts["In Progress"] += 1
                 else:
                     status_counts["Not Started"] += 1
@@ -1752,7 +1846,7 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
                         if date_str in completed_line:
                             if is_done:
                                 completed_line[date_str] += 1
-                            elif list_id == "6922b7e358b2e5d625ad65b9":
+                            elif list_id == trello_in_progress_list:
                                 active_line[date_str] += 1
                             else:
                                 upcoming_line[date_str] += 1
@@ -1789,6 +1883,55 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
             # 2. PM ANALYSIS: Sort by highest risk (highest cost)
             finance_items.sort(key=lambda x: x.get('numeric', 0), reverse=True)
 
+            # --- TEAM WORKLOAD CALCULATION ---
+            workload_items = []
+            try:
+                all_employees = list(employees_collection.find({}, {"_id": 0, "name": 1, "role": 1}))
+                owner_card_counts = {}
+                trello_done_id = os.getenv("TRELLO_DONE_LIST_ID", "6922b7e358b2e5d625ad65ba")
+                for c in cards:
+                    card_data = c
+                    if isinstance(card_data, dict) and "json" in card_data: card_data = card_data["json"]
+                    if not isinstance(card_data, dict): continue
+                    if card_data.get("idList") == trello_done_id or card_data.get("dueComplete"): continue
+                    cn = card_data.get("name", "")
+                    if "[" in cn and "]" in cn:
+                        ow = cn.split("]")[0].replace("[", "").strip()
+                        owner_card_counts[ow] = owner_card_counts.get(ow, 0) + 1
+                
+                for emp in all_employees:
+                    emp_name = emp.get("name", "Unknown")
+                    emp_role = emp.get("role", "")
+                    count = owner_card_counts.get(emp_name, 0)
+                    if count >= 6:
+                        wl_status = "overloaded"
+                    elif count >= 3:
+                        wl_status = "busy"
+                    else:
+                        wl_status = "available"
+                    workload_items.append({"name": emp_name, "role": emp_role, "active_tasks": count, "status": wl_status})
+            except Exception as e:
+                print(f"Workload calc error: {e}")
+
+            # --- TIME TRACKING: Estimated vs Actual ---
+            for fi in finance_items:
+                try:
+                    task_detail = fi.get("details", "")
+                    # Get estimated hours from the description pattern "⏱ Est: X days"
+                    fi["estimated_hours"] = None
+                    fi["actual_hours"] = None
+                    
+                    # Find matching time logs
+                    if time_logs_collection:
+                        time_entries = list(time_logs_collection.find(
+                            {"task_name": {"$regex": task_detail, "$options": "i"}},
+                            {"hours": 1, "_id": 0}
+                        ))
+                        if time_entries:
+                            fi["actual_hours"] = sum(e.get("hours", 0) for e in time_entries)
+                except:
+                    pass
+
             # 🚀 FIND THE USER RECORD USING THE AUTHENTICATED USERNAME
             user_record = users_collection.find_one({"username": username}, {"display_name": 1})
             
@@ -1823,13 +1966,91 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
                         "backgroundColor": ["#6C5DD3", "#3F8CFF", "#FFCE73"]
                     }]
                 },
-                "finance_table": finance_items[:5] # Top 5 High-Impact items
+                "finance_table": finance_items[:5], # Top 5 High-Impact items
+                "team_workload": workload_items
             }
 
     except Exception as e:
         print(f"⚠️ Dashboard Analytics Error: {e}")
         return {}
     
+
+# ==========================================
+# ⏱ TIME TRACKING ENDPOINTS
+# ==========================================
+
+@app.post("/time-log")
+def create_time_log(log: TimeLogRequest, username: str = Depends(get_current_user)):
+    """Log hours spent on a task."""
+    try:
+        entry = {
+            "task_name": log.task_name,
+            "logged_by": username,
+            "hours": log.hours,
+            "note": log.note,
+            "timestamp": datetime.now()
+        }
+        time_logs_collection.insert_one(entry)
+        return {"msg": f"Logged {log.hours}h on '{log.task_name}'"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/time-log/{task_name}")
+def get_time_logs(task_name: str, username: str = Depends(get_current_user)):
+    """Get all time entries for a specific task."""
+    try:
+        logs = list(time_logs_collection.find(
+            {"task_name": {"$regex": task_name, "$options": "i"}},
+            {"_id": 0}
+        ).sort("timestamp", -1))
+        total_hours = sum(l.get("hours", 0) for l in logs)
+        return {"task_name": task_name, "total_hours": total_hours, "entries": logs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 📁 MULTI-PROJECT ENDPOINTS
+# ==========================================
+
+@app.post("/projects")
+def create_project(project: ProjectCreate, username: str = Depends(get_current_user)):
+    """Create a new project with its integration URLs."""
+    try:
+        doc = {
+            "name": project.name,
+            "owner": username,
+            "trello_board_url": project.trello_board_url,
+            "n8n_trello_webhook": project.n8n_trello_webhook,
+            "n8n_get_cards_url": project.n8n_get_cards_url,
+            "n8n_slack_webhook": project.n8n_slack_webhook,
+            "created_at": datetime.now()
+        }
+        result = projects_collection.insert_one(doc)
+        return {"msg": f"Project '{project.name}' created", "id": str(result.inserted_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects")
+def get_projects(username: str = Depends(get_current_user)):
+    """List all projects for the authenticated user."""
+    try:
+        projects = list(projects_collection.find(
+            {"owner": username},
+            {"_id": 0}
+        ).sort("created_at", -1))
+        return projects
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/projects/{project_name}")
+def delete_project(project_name: str, username: str = Depends(get_current_user)):
+    """Delete a project by name."""
+    try:
+        projects_collection.delete_one({"name": project_name, "owner": username})
+        return {"msg": f"Project '{project_name}' deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/trigger-workflow")
 def trigger_workflow(workflow_id: str):
     """

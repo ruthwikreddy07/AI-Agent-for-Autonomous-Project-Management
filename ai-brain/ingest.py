@@ -1,11 +1,14 @@
 import os
+from dotenv import load_dotenv
 from pinecone import Pinecone
+from sentence_transformers import SentenceTransformer
 
+load_dotenv()
 
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-PINECONE_API_KEY = "pcsk_5UKF8V_TiR2tKu8izJQ7isSeMW6pxQAsyC359FNaF3EasPSMUD1km3xwfMw8Rr17k4ffzg"  # <--- PASTE KEY
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
 INDEX_NAME = "project-memory"
 
 # ==========================================

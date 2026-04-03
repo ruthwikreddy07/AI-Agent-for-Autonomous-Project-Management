@@ -2,6 +2,7 @@ import { Component, OnInit, AfterViewChecked, ViewChild, ElementRef, Output, Eve
 import { FormsModule } from '@angular/forms';
 import { AiService } from '../ai.service'; // 👈 FIXED PATH
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import DOMPurify from 'dompurify';
 import { HttpClient } from '@angular/common/http'; 
 import { Router } from '@angular/router';
 import { NgZone } from '@angular/core'; // 🚀 Add this
@@ -212,7 +213,8 @@ onLogout() {
   }
   formatText(text: string): SafeHtml {
     let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>'); 
-    return this.sanitizer.bypassSecurityTrustHtml(formatted);
+    const cleanHtml = DOMPurify.sanitize(formatted);
+    return this.sanitizer.bypassSecurityTrustHtml(cleanHtml);
   }
 
   // 1. Add this variable at the top of your class (near sessionId)

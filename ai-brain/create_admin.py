@@ -1,10 +1,12 @@
+import os
+from dotenv import load_dotenv
 from pymongo import MongoClient
 from passlib.context import CryptContext
 
+load_dotenv()
+
 # === CONFIGURATION ===
-# ⚠️ REPLACE THIS WITH YOUR REAL MONGODB URL
-MONGO_URI = "mongodb+srv://eventhubuser:JLzCOCd27buyhWOQ@cluster0.frrybb1.mongodb.net/eventhub?retryWrites=true&w=majority&appName=Cluster0" 
-# If using local, keep: "mongodb://localhost:27017"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
 client = MongoClient(MONGO_URI)
 db = client["ai_project_manager"]

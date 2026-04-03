@@ -190,6 +190,35 @@ updateProfile(data: any): Observable<any> {
   }, this.getAuthOptions());
 }
 
+  // --- PROJECTS ---
+
+  getProjects(): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    return this.http.get<any[]>(`${this.apiUrl}/projects`, this.getAuthOptions());
+  }
+
+  createProject(project: any): Observable<any> {
+    if (this.USE_MOCK) return of({ msg: 'Created (Mock)' }).pipe(delay(300));
+    return this.http.post<any>(`${this.apiUrl}/projects`, project, this.getAuthOptions());
+  }
+
+  deleteProject(projectName: string): Observable<any> {
+    if (this.USE_MOCK) return of({ msg: 'Deleted (Mock)' }).pipe(delay(300));
+    return this.http.delete<any>(`${this.apiUrl}/projects/${projectName}`, this.getAuthOptions());
+  }
+
+  // --- TIME TRACKING ---
+
+  logTime(taskName: string, hours: number, note: string = ''): Observable<any> {
+    if (this.USE_MOCK) return of({ msg: 'Logged (Mock)' }).pipe(delay(300));
+    return this.http.post<any>(`${this.apiUrl}/time-log`, { task_name: taskName, hours, note }, this.getAuthOptions());
+  }
+
+  getTimeLogs(taskName: string): Observable<any> {
+    if (this.USE_MOCK) return of({ total_hours: 0, entries: [] }).pipe(delay(300));
+    return this.http.get<any>(`${this.apiUrl}/time-log/${taskName}`, this.getAuthOptions());
+  }
+
   // --- HELPER ---
   private getAuthOptions() {
     if (!this.isBrowser) return {};
