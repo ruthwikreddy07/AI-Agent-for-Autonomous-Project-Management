@@ -1,20 +1,18 @@
 import { Inject, Injectable, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, tap, of } from 'rxjs'; // 👈 Added 'of'
-import { delay } from 'rxjs/operators';     // 👈 Added 'delay'
+import { Observable, tap, of } from 'rxjs';
+import { delay } from 'rxjs/operators';
 import { environment } from '../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AiService {
   
   // 👇 TOGGLE THIS TO SWITCH MODES!
-  // true  = Frontend Testing (No Backend needed)
-  // false = Real Production (Connects to Python)
   private USE_MOCK = false; 
 
   private apiUrl = environment.apiUrl; 
-  private tokenKey = 'nexus_token'; // renamed to avoid conflicts
+  private tokenKey = 'nexus_token';
   private isBrowser: boolean;
 
   constructor(private http: HttpClient, @Inject(PLATFORM_ID) platformId: Object) {
@@ -23,56 +21,43 @@ export class AiService {
 
   getDashboardData(): Observable<any> {
     if (this.USE_MOCK) {
-      // Structure matches what your Python server returns
       return of({
-        tasks_due: 5,
-        overdue: 2,
-        active_agents: 11,
-        resolved_risks: 15,
+        tasks_due: 5, overdue: 2, active_agents: 11, resolved_risks: 15,
+        user_role: 'admin',
         line_chart: {
           labels: ['01 Feb', '03 Feb', '05 Feb', '07 Feb', '09 Feb', '11 Feb'],
-          datasets: [{
-            label: 'Tasks Due',
-            data: [2, 5, 3, 8, 4, 6],
-            borderColor: '#6C5DD3',
-            backgroundColor: 'transparent'
-          }]
+          datasets: [{ label: 'Tasks Due', data: [2, 5, 3, 8, 4, 6], borderColor: '#6C5DD3', backgroundColor: 'transparent' }]
         },
         donut_chart: {
           labels: ['Completed', 'In Progress', 'Not Started'],
-          datasets: [{
-            data: [15, 10, 5],
-            backgroundColor: ['#6C5DD3', '#3F8CFF', '#FFCE73']
-          }]
+          datasets: [{ data: [15, 10, 5], backgroundColor: ['#6C5DD3', '#3F8CFF', '#FFCE73'] }]
         },
         finance_table: [
           { date: 'Feb 12', category: 'Software', details: 'Subscription', amount: '-$50.00', status: 'Completed', isPositive: false }
         ]
       }).pipe(delay(500));
     }
-
-    // 🔗 REAL MODE: Hits your Python server which fetches from Trello/n8n
     return this.http.get<any>(`${this.apiUrl}/dashboard/data`, this.getAuthOptions());
   }
   
-  // --- AUTHENTICATION ---
+  // ==========================================
+  // 🔐 AUTHENTICATION
+  // ==========================================
   login(username: string, password: string): Observable<any> {
-    // 1. MOCK MODE
     if (this.USE_MOCK) {
-      console.log(`[Mock] Logging in user: ${username}`);
       return new Observable(observer => {
         setTimeout(() => {
           if (this.isBrowser) {
             localStorage.setItem(this.tokenKey, 'fake-jwt-token-999');
             localStorage.setItem('current_user', username);
+            localStorage.setItem('user_role', 'admin');
           }
-          observer.next({ access_token: 'fake-jwt-token-999' });
+          observer.next({ access_token: 'fake-jwt-token-999', role: 'admin' });
           observer.complete();
         }, 800);
       });
     }
 
-    // 2. REAL BACKEND MODE
     const formData = new FormData();
     formData.append('username', username);
     formData.append('password', password);
@@ -80,23 +65,15 @@ export class AiService {
       tap(res => {
         if (this.isBrowser) {
           localStorage.setItem(this.tokenKey, res.access_token);
-          localStorage.setItem('current_user', username); 
+          localStorage.setItem('current_user', username);
+          localStorage.setItem('user_role', res.role || 'developer');
         }
       })
     );
   }
 
-  deleteEmployee(email: string): Observable<any> {
-  return this.http.delete(`${this.apiUrl}/employees/${email}`, this.getAuthOptions());
-}
-
-updateEmployee(email: string, data: any): Observable<any> {
-  return this.http.put(`${this.apiUrl}/employees/${email}`, data, this.getAuthOptions());
-}
-
-
   register(username: string, password: string): Observable<any> {
-    if (this.USE_MOCK) return this.login(username, password); // Just log in directly for mock
+    if (this.USE_MOCK) return this.login(username, password);
     return this.http.post(`${this.apiUrl}/register`, { username, password });
   }
 
@@ -104,6 +81,7 @@ updateEmployee(email: string, data: any): Observable<any> {
     if (this.isBrowser) {
       localStorage.removeItem(this.tokenKey);
       localStorage.removeItem('current_user');
+      localStorage.removeItem('user_role');
     }
   }
 
@@ -112,14 +90,34 @@ updateEmployee(email: string, data: any): Observable<any> {
     return !!localStorage.getItem(this.tokenKey);
   }
 
-  // --- CHAT & CORE FEATURES ---
+  // ==========================================
+  // 🔐 RBAC — ROLE MANAGEMENT
+  // ==========================================
+  getRole(): string {
+    if (!this.isBrowser) return 'developer';
+    return localStorage.getItem('user_role') || 'developer';
+  }
 
+  isPM(): boolean {
+    const role = this.getRole();
+    return role === 'pm' || role === 'admin';
+  }
+
+  isAdmin(): boolean {
+    return this.getRole() === 'admin';
+  }
+
+  getUserRole(): Observable<any> {
+    if (this.USE_MOCK) return of({ role: 'admin' }).pipe(delay(200));
+    return this.http.get<any>(`${this.apiUrl}/user/role`, this.getAuthOptions());
+  }
+
+  // ==========================================
+  // 💬 CHAT & CORE FEATURES
+  // ==========================================
   sendMessage(userMessage: string, sessionId: string): Observable<any> {
     if (this.USE_MOCK) {
-      return of({ 
-        reply: `[Mock AI] I received: "${userMessage}". I can't think yet, but the UI works!`, 
-        approval_required: false 
-      }).pipe(delay(1000));
+      return of({ reply: `[Mock AI] I received: "${userMessage}".`, approval_required: false }).pipe(delay(1000));
     }
     return this.http.post<any>(`${this.apiUrl}/chat`, { message: userMessage, session_id: sessionId }, this.getAuthOptions());
   }
@@ -143,21 +141,19 @@ updateEmployee(email: string, data: any): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/upload`, formData, this.getAuthOptions());
   }
 
-  // --- DASHBOARD & TEAM ---
-  // src/app/ai.service.ts
+  // ==========================================
+  // 👥 TEAM & PROFILE
+  // ==========================================
+  getProfile(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/user/profile`, this.getAuthOptions());
+  }
 
-getProfile(): Observable<any> {
-  return this.http.get<any>(`${this.apiUrl}/user/profile`, this.getAuthOptions()); // 👈 Ensure this helper is here
-}
-
-updateProfile(data: any): Observable<any> {
-  return this.http.post<any>(`${this.apiUrl}/user/profile`, data, this.getAuthOptions()); // 👈 And here
-}
+  updateProfile(data: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/user/profile`, data, this.getAuthOptions());
+  }
 
   getRisks(): Observable<any> { 
-    if (this.USE_MOCK) {
-      return of({ risks: ['Budget Overrun > 10%', 'Server Latency High', 'Compliance Audit Pending'] }).pipe(delay(600));
-    }
+    if (this.USE_MOCK) return of({ risks: ['Budget Overrun > 10%'] }).pipe(delay(600));
     return this.http.get<any>(`${this.apiUrl}/risks`, this.getAuthOptions()); 
   }
 
@@ -176,22 +172,29 @@ updateProfile(data: any): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/employees`, { name, role, skills, email, rate }, this.getAuthOptions());
   }
 
-  // --- APPROVALS ---
+  deleteEmployee(email: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/employees/${email}`, this.getAuthOptions());
+  }
 
+  updateEmployee(email: string, data: any): Observable<any> {
+    return this.http.put(`${this.apiUrl}/employees/${email}`, data, this.getAuthOptions());
+  }
+
+  // ==========================================
+  // ✅ APPROVALS
+  // ==========================================
   approvePlan(sessionId: string): Observable<any> { 
     if (this.USE_MOCK) return of({}).pipe(delay(500));
     return this.http.post<any>(`${this.apiUrl}/approve`, { session_id: sessionId }, this.getAuthOptions()); 
   }
   
   rejectPlan(sessionId: string, reasonText: string = 'User rejected the plan.'): Observable<any> {
-  return this.http.post<any>(`${this.apiUrl}/reject`, { 
-    session_id: sessionId, 
-    reason: reasonText 
-  }, this.getAuthOptions());
-}
+    return this.http.post<any>(`${this.apiUrl}/reject`, { session_id: sessionId, reason: reasonText }, this.getAuthOptions());
+  }
 
-  // --- PROJECTS ---
-
+  // ==========================================
+  // 📁 PROJECTS
+  // ==========================================
   getProjects(): Observable<any[]> {
     if (this.USE_MOCK) return of([]).pipe(delay(300));
     return this.http.get<any[]>(`${this.apiUrl}/projects`, this.getAuthOptions());
@@ -207,8 +210,9 @@ updateProfile(data: any): Observable<any> {
     return this.http.delete<any>(`${this.apiUrl}/projects/${projectName}`, this.getAuthOptions());
   }
 
-  // --- TIME TRACKING ---
-
+  // ==========================================
+  // ⏱ TIME TRACKING
+  // ==========================================
   logTime(taskName: string, hours: number, note: string = ''): Observable<any> {
     if (this.USE_MOCK) return of({ msg: 'Logged (Mock)' }).pipe(delay(300));
     return this.http.post<any>(`${this.apiUrl}/time-log`, { task_name: taskName, hours, note }, this.getAuthOptions());
@@ -219,7 +223,71 @@ updateProfile(data: any): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/time-log/${taskName}`, this.getAuthOptions());
   }
 
-  // --- HELPER ---
+  // ==========================================
+  // 📦 EPIC → STORY → TASK HIERARCHY
+  // ==========================================
+  getEpics(): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    return this.http.get<any[]>(`${this.apiUrl}/epics`, this.getAuthOptions());
+  }
+
+  createEpic(epic: any): Observable<any> {
+    if (this.USE_MOCK) return of({ msg: 'Created', id: 'mock-epic-1' }).pipe(delay(300));
+    return this.http.post<any>(`${this.apiUrl}/epics`, epic, this.getAuthOptions());
+  }
+
+  updateEpic(epicId: string, data: any): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/epics/${epicId}`, data, this.getAuthOptions());
+  }
+
+  deleteEpic(epicId: string): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/epics/${epicId}`, this.getAuthOptions());
+  }
+
+  getStories(epicId?: string): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    const url = epicId ? `${this.apiUrl}/stories?epic_id=${epicId}` : `${this.apiUrl}/stories`;
+    return this.http.get<any[]>(url, this.getAuthOptions());
+  }
+
+  createStory(story: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/stories`, story, this.getAuthOptions());
+  }
+
+  getTasks(storyId?: string, epicId?: string): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    let url = `${this.apiUrl}/tasks`;
+    const params: string[] = [];
+    if (storyId) params.push(`story_id=${storyId}`);
+    if (epicId) params.push(`epic_id=${epicId}`);
+    if (params.length) url += '?' + params.join('&');
+    return this.http.get<any[]>(url, this.getAuthOptions());
+  }
+
+  createTask(task: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/tasks`, task, this.getAuthOptions());
+  }
+
+  updateTask(taskId: string, data: any): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/tasks/${taskId}`, data, this.getAuthOptions());
+  }
+
+  getWorkBreakdown(): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    return this.http.get<any[]>(`${this.apiUrl}/work-breakdown`, this.getAuthOptions());
+  }
+
+  // ==========================================
+  // 📊 GANTT CHART
+  // ==========================================
+  getGanttData(): Observable<any> {
+    if (this.USE_MOCK) return of({ tasks: [], total: 0 }).pipe(delay(300));
+    return this.http.get<any>(`${this.apiUrl}/gantt-data`, this.getAuthOptions());
+  }
+
+  // ==========================================
+  // 🔧 HELPER
+  // ==========================================
   private getAuthOptions() {
     if (!this.isBrowser) return {};
     const token = localStorage.getItem(this.tokenKey);

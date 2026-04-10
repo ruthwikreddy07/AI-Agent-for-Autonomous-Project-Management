@@ -402,4 +402,25 @@ canvas#donutCanvas {
 
 /* --- dot.red for burndown legend --- */
 .dot.red { background: var(--brand-red); }
+
+/* --- ROLE BADGES --- */
+.role-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.8px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.role-admin { background: linear-gradient(135deg, #FFD700, #FFA500); color: #7D4E00; }
+.role-pm { background: var(--brand-purple-light); color: var(--brand-purple); }
+.role-dev { background: var(--brand-blue-light); color: var(--brand-blue); }
+
+/* Dark mode role badges */
+:host-context(body.dark-theme) .role-admin { background: linear-gradient(135deg, #FFD700, #FFA500); color: #7D4E00; }
+:host-context(body.dark-theme) .role-pm { background: #2D2456; color: #A78BFA; }
+:host-context(body.dark-theme) .role-dev { background: #1E3A5F; color: #60A5FA; }
+
 

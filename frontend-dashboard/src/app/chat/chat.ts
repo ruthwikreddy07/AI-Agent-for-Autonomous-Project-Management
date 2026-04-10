@@ -40,6 +40,7 @@ chatHistory: { sender: string, text: string, html?: SafeHtml }[] = [];
   
   isLoading: boolean = false;
   showApprovalButtons: boolean = false;
+  isPM: boolean = false;
 
   constructor(
     private aiService: AiService, 
@@ -51,6 +52,7 @@ chatHistory: { sender: string, text: string, html?: SafeHtml }[] = [];
 
   ngOnInit() {
     this.isAuthenticated = this.aiService.isLoggedIn();
+    this.isPM = this.aiService.isPM();
     const storedUser = localStorage.getItem('current_user');
     if (storedUser) { this.loginData.username = storedUser; }
     if (this.isAuthenticated) this.initDashboard();

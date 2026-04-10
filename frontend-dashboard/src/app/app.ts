@@ -6,13 +6,15 @@ import { ChatComponent } from './chat/chat';
 import { TeamComponent } from './team/team';       
 import { SettingsComponent } from './settings/settings'; 
 import { LoginComponent } from './login/login'; 
+import { BacklogComponent } from './backlog/backlog';
+import { TimelineComponent } from './timeline/timeline';
 import { AiService } from './ai.service'; 
-import { ChangeDetectorRef } from '@angular/core'; //
+import { ChangeDetectorRef } from '@angular/core';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, DashboardComponent, ChatComponent, TeamComponent, SettingsComponent, LoginComponent],
+  imports: [CommonModule, DashboardComponent, ChatComponent, TeamComponent, SettingsComponent, LoginComponent, BacklogComponent, TimelineComponent],
   template: `
     <div *ngIf="showLoginModal" class="login-overlay">
       <app-login (loginSuccess)="onLoginSuccess()" (cancel)="showLoginModal = false"></app-login>
@@ -40,6 +42,16 @@ import { ChangeDetectorRef } from '@angular/core'; //
         (goBack)="onNavigate('dashboard')">
       </app-settings>
 
+      <app-backlog
+        *ngIf="currentView === 'backlog' && isAuthenticated"
+        (navigate)="onNavigate($event)">
+      </app-backlog>
+
+      <app-timeline
+        *ngIf="currentView === 'timeline' && isAuthenticated"
+        (navigate)="onNavigate($event)">
+      </app-timeline>
+
     </div>
   `,
   styles: [`
@@ -53,17 +65,16 @@ import { ChangeDetectorRef } from '@angular/core'; //
 })
 export class App {
   isAuthenticated = false;
-  showLoginModal = false; // Controls the popup
+  showLoginModal = false;
   currentView: string = 'dashboard';
 
-  constructor(private aiService: AiService, private cdr: ChangeDetectorRef) { //
+  constructor(private aiService: AiService, private cdr: ChangeDetectorRef) {
     this.isAuthenticated = this.aiService.isLoggedIn();
   }
 
   onLoginSuccess() {
     this.isAuthenticated = true;
-    this.showLoginModal = false; // Close modal
-    // Determine where to go? For now, stay on dashboard or the requested view.
+    this.showLoginModal = false;
   }
 
   onNavigate(view: string) {
@@ -77,7 +88,7 @@ export class App {
 
     // 2. CHECK AUTH for EVERYTHING ELSE
     if (!this.isAuthenticated) {
-      this.showLoginModal = true; // ⛔ STOP! Show Login
+      this.showLoginModal = true;
       return; 
     }
 
@@ -91,13 +102,11 @@ export class App {
     if (view === 'logout') {
       this.aiService.logout();
       this.isAuthenticated = false;
-      
-      // 🚀 THE FIX: Instead of showing a broken dashboard, show the Login screen
       this.showLoginModal = true; 
-      this.currentView = 'dashboard'; // Keep dashboard as the background view
+      this.currentView = 'dashboard';
       return;
     }
-    // 5. Allow Internal Navigation
+    // 5. Allow Internal Navigation (including new views)
     this.currentView = view;
   }
 

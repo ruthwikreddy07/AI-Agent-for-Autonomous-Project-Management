@@ -1,0 +1,170 @@
+<div class="backlog-wrapper">
+  <!-- Header -->
+  <div class="backlog-header">
+    <div class="header-left">
+      <button class="back-btn" (click)="onNavClick('dashboard')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
+      </button>
+      <div>
+        <h1 class="page-title">Backlog</h1>
+        <p class="page-subtitle">Epic → Story → Task Hierarchy</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="btn-primary" *ngIf="isPM" (click)="openAddEpic()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        New Epic
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats Bar -->
+  <div class="stats-bar">
+    <div class="mini-stat">
+      <span class="mini-stat-value">{{ totalEpics }}</span>
+      <span class="mini-stat-label">Epics</span>
+    </div>
+    <div class="mini-stat">
+      <span class="mini-stat-value">{{ totalStories }}</span>
+      <span class="mini-stat-label">Stories</span>
+    </div>
+    <div class="mini-stat">
+      <span class="mini-stat-value">{{ totalTasks }}</span>
+      <span class="mini-stat-label">Tasks</span>
+    </div>
+    <div class="mini-stat">
+      <span class="mini-stat-value">{{ totalPoints }}</span>
+      <span class="mini-stat-label">Story Points</span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-state" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <p>Loading work breakdown...</p>
+  </div>
+
+  <!-- Empty State -->
+  <div class="empty-state" *ngIf="!isLoading && tree.length === 0">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#808191" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+    <h3>No Epics Yet</h3>
+    <p>Create your first Epic to start organizing your project into a structured hierarchy.</p>
+    <button class="btn-primary" *ngIf="isPM" (click)="openAddEpic()">+ Create First Epic</button>
+  </div>
+
+  <!-- Tree View -->
+  <div class="tree-container" *ngIf="!isLoading && tree.length > 0">
+    <div class="epic-node" *ngFor="let epic of tree">
+      <!-- Epic Row -->
+      <div class="tree-row epic-row" (click)="toggleEpic(epic.id)">
+        <div class="row-left">
+          <svg class="chevron-icon" [class.rotated]="expandedEpics.has(epic.id)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          <span class="epic-color-dot" [style.background]="epic.color"></span>
+          <span class="node-name epic-name">{{ epic.name }}</span>
+          <span class="status-pill" [style.background]="getStatusColor(epic.status)" [style.color]="'white'">{{ getStatusLabel(epic.status) }}</span>
+        </div>
+        <div class="row-right">
+          <span class="child-count">{{ (epic.stories || []).length }} items</span>
+          <button class="icon-action" *ngIf="isPM" (click)="openAddStory(epic.id); $event.stopPropagation()" title="Add Story">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button class="icon-action danger" *ngIf="isPM" (click)="deleteEpic(epic.id); $event.stopPropagation()" title="Delete Epic">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Stories (expanded) -->
+      <div class="story-container" *ngIf="expandedEpics.has(epic.id)">
+        <div *ngFor="let story of epic.stories" class="story-node">
+
+          <!-- Story Row -->
+          <div class="tree-row story-row" *ngIf="story.type === 'story'" (click)="toggleStory(story.id)">
+            <div class="row-left">
+              <span class="tree-indent"></span>
+              <svg class="chevron-icon" [class.rotated]="expandedStories.has(story.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3F8CFF" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"></path></svg>
+              <span class="node-name">{{ story.name }}</span>
+              <span class="status-pill small" [style.background]="getStatusColor(story.status)" [style.color]="'white'">{{ getStatusLabel(story.status) }}</span>
+              <span class="points-badge" *ngIf="story.story_points">{{ story.story_points }} pts</span>
+            </div>
+            <div class="row-right">
+              <span class="owner-tag" *ngIf="story.assigned_to !== 'Unassigned'">{{ story.assigned_to }}</span>
+              <span class="child-count">{{ (story.tasks || []).length }} tasks</span>
+              <button class="icon-action" *ngIf="isPM" (click)="openAddTask(story.id, epic.id); $event.stopPropagation()" title="Add Task">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tasks under story (expanded) -->
+          <div class="task-container" *ngIf="story.type === 'story' && expandedStories.has(story.id)">
+            <div class="tree-row task-row" *ngFor="let task of story.tasks">
+              <div class="row-left">
+                <span class="tree-indent"></span>
+                <span class="tree-indent"></span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFCE73" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path></svg>
+                <span class="node-name task-name">{{ task.name }}</span>
+                <span class="status-pill tiny" [style.background]="getStatusColor(task.status)" [style.color]="'white'">{{ getStatusLabel(task.status) }}</span>
+              </div>
+              <div class="row-right">
+                <span class="owner-tag small" *ngIf="task.assigned_to !== 'Unassigned'">{{ task.assigned_to }}</span>
+                <span class="date-tag" *ngIf="task.due_date">{{ task.due_date }}</span>
+              </div>
+            </div>
+            <div class="tree-row task-row empty-tasks" *ngIf="(story.tasks || []).length === 0">
+              <span class="tree-indent"></span><span class="tree-indent"></span>
+              <span class="empty-text">No tasks yet</span>
+            </div>
+          </div>
+
+          <!-- Direct task under epic -->
+          <div class="tree-row task-row" *ngIf="story.type === 'task'">
+            <div class="row-left">
+              <span class="tree-indent"></span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFCE73" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path></svg>
+              <span class="node-name task-name">{{ story.name }}</span>
+              <span class="status-pill tiny" [style.background]="getStatusColor(story.status)" [style.color]="'white'">{{ getStatusLabel(story.status) }}</span>
+            </div>
+            <div class="row-right">
+              <span class="owner-tag small" *ngIf="story.assigned_to !== 'Unassigned'">{{ story.assigned_to }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Modal -->
+  <div class="modal-overlay" *ngIf="showModal" (click)="showModal = false">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <h3>Create {{ modalType | titlecase }}</h3>
+      <input type="text" [(ngModel)]="modalData.name" [placeholder]="modalType + ' name'" class="modal-input" />
+      <textarea [(ngModel)]="modalData.description" placeholder="Description (optional)" class="modal-input modal-textarea"></textarea>
+      
+      <div *ngIf="modalType === 'story'" class="form-row">
+        <input type="number" [(ngModel)]="modalData.story_points" placeholder="Story Points" class="modal-input small-input" />
+        <input type="text" [(ngModel)]="modalData.assigned_to" placeholder="Assigned To" class="modal-input" />
+      </div>
+
+      <div *ngIf="modalType === 'task'">
+        <input type="text" [(ngModel)]="modalData.assigned_to" placeholder="Assigned To" class="modal-input" />
+      </div>
+
+      <div *ngIf="modalType === 'epic'" class="color-picker-row">
+        <label>Color:</label>
+        <div class="color-options">
+          <span class="color-dot" *ngFor="let c of ['#6C5DD3', '#3F8CFF', '#FF754C', '#34AA44', '#FFCE73', '#FFA2C0']"
+                [style.background]="c"
+                [class.selected]="modalData.color === c"
+                (click)="modalData.color = c"></span>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-primary" (click)="saveItem()">Create</button>
+        <button class="btn-outline" (click)="showModal = false">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>

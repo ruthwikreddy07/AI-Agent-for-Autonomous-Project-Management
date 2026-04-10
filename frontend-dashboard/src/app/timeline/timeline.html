@@ -1,0 +1,77 @@
+<div class="timeline-wrapper">
+  <!-- Header -->
+  <div class="timeline-header">
+    <div class="header-left">
+      <button class="back-btn" (click)="onNavClick('dashboard')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
+      </button>
+      <div>
+        <h1 class="page-title">Timeline</h1>
+        <p class="page-subtitle">Gantt chart with dependency tracking & critical path</p>
+      </div>
+    </div>
+    <div class="header-controls">
+      <!-- Zoom -->
+      <div class="zoom-controls">
+        <button class="ctrl-btn" (click)="zoomOut()" title="Zoom Out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        </button>
+        <span class="zoom-label">{{ (zoomLevel * 100) | number:'1.0-0' }}%</span>
+        <button class="ctrl-btn" (click)="zoomIn()" title="Zoom In">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        </button>
+      </div>
+
+      <!-- Epic Filter -->
+      <div class="epic-filters" *ngIf="epics.length > 0">
+        <button class="filter-chip" [class.active]="filterEpic === ''" (click)="filterByEpic('')">All</button>
+        <button class="filter-chip" *ngFor="let epic of epics" [class.active]="filterEpic === epic" (click)="filterByEpic(epic)">{{ epic }}</button>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#FFCE73"></span>To Do</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#3F8CFF"></span>In Progress</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#34AA44"></span>Done</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#FF754C"></span>Critical Path</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="mini-stats">
+    <div class="mini-stat"><strong>{{ totalTasks }}</strong> tasks</div>
+    <div class="mini-stat"><strong>{{ epics.length }}</strong> epics</div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-state" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <p>Loading timeline data...</p>
+  </div>
+
+  <!-- Empty State -->
+  <div class="empty-state" *ngIf="!isLoading && tasks.length === 0">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#808191" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+    <h3>No Timeline Data</h3>
+    <p>Create tasks with start & end dates in the Backlog, or let the AI plan a project via chat.</p>
+    <button class="btn-primary" (click)="onNavClick('backlog')">Go to Backlog</button>
+  </div>
+
+  <!-- Gantt Canvas -->
+  <div class="gantt-container" *ngIf="!isLoading && tasks.length > 0">
+    <canvas #ganttCanvas></canvas>
+  </div>
+
+  <!-- Hover Tooltip -->
+  <div class="gantt-tooltip" *ngIf="hoveredTask" [style.left.px]="tooltipX" [style.top.px]="tooltipY">
+    <div class="tooltip-title">{{ hoveredTask.name }}</div>
+    <div class="tooltip-row"><span class="tooltip-label">Owner:</span> {{ hoveredTask.owner }}</div>
+    <div class="tooltip-row"><span class="tooltip-label">Epic:</span> {{ hoveredTask.epic_name }}</div>
+    <div class="tooltip-row"><span class="tooltip-label">Status:</span> {{ hoveredTask.status }}</div>
+    <div class="tooltip-row" *ngIf="hoveredTask.start_date"><span class="tooltip-label">Start:</span> {{ hoveredTask.start_date }}</div>
+    <div class="tooltip-row" *ngIf="hoveredTask.end_date"><span class="tooltip-label">End:</span> {{ hoveredTask.end_date }}</div>
+    <div class="tooltip-row" *ngIf="hoveredTask.estimated_hours"><span class="tooltip-label">Est:</span> {{ hoveredTask.estimated_hours }}h</div>
+    <div class="tooltip-critical" *ngIf="hoveredTask.is_critical_path">🔴 Critical Path</div>
+  </div>
+</div>

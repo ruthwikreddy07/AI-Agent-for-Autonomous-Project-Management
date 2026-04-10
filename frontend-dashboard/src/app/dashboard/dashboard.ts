@@ -36,8 +36,10 @@ stats: any = {
   user_display_name: 'Project Manager',
   team_workload: [],
   burn_percentage: 0,
-  burndown_chart: null
+  burndown_chart: null,
+  user_role: 'developer'
 };
+  isPM = false;
   financeData: any[] = [];
 
   // --- Multi-Project ---
@@ -84,8 +86,10 @@ stats: any = {
         user_display_name: data.user_display_name,
         team_workload: data.team_workload || [],
         burn_percentage: data.burn_percentage || 0,
-        burndown_chart: data.burndown_chart || null
+        burndown_chart: data.burndown_chart || null,
+        user_role: data.user_role || 'developer'
       };
+      this.isPM = (data.user_role === 'pm' || data.user_role === 'admin');
 
       this.financeData = data.finance_table;
 

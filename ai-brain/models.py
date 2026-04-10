@@ -1,7 +1,27 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-# --- EMPLOYEE & USER ---
+# ==========================================
+# 🔐 RBAC — ROLES
+# ==========================================
+# Roles: "admin", "pm", "developer"
+# - admin: Full access, can manage users and system settings
+# - pm: Can approve plans, manage team, view all reports
+# - developer: Can log time, view their tasks, update task status
+
+VALID_ROLES = ["admin", "pm", "developer"]
+
+# --- USER & AUTH ---
+class User(BaseModel):
+    username: str
+    password: str
+    role: str = "developer"  # Default role for new users
+
+class ProfileUpdate(BaseModel):
+    display_name: str
+    email: str
+
+# --- EMPLOYEE ---
 class Employee(BaseModel):
     name: str
     role: str
@@ -9,14 +29,6 @@ class Employee(BaseModel):
     email: str
     trello_id: Optional[str] = ""
     rate: int = 50
-
-class ProfileUpdate(BaseModel):
-    display_name: str
-    email: str
-
-class User(BaseModel):
-    username: str
-    password: str
 
 # --- CHAT & APPROVAL ---
 class ApproveRequest(BaseModel):
@@ -42,6 +54,59 @@ class TimeLogEntry(BaseModel):
     logged_by: str
     hours: float
     note: str = ""
+
+# ==========================================
+# 📦 EPIC → STORY → TASK HIERARCHY
+# ==========================================
+
+class EpicCreate(BaseModel):
+    name: str
+    description: str = ""
+    project_id: str = "default"
+    color: str = "#6C5DD3"  # For Gantt chart bar coloring
+
+class EpicUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None  # "active", "completed", "archived"
+    color: Optional[str] = None
+
+class StoryCreate(BaseModel):
+    name: str
+    description: str = ""
+    epic_id: str = ""
+    story_points: int = 0
+    assigned_to: str = "Unassigned"
+
+class StoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None  # "todo", "in_progress", "done"
+    story_points: Optional[int] = None
+    assigned_to: Optional[str] = None
+
+class TaskItemCreate(BaseModel):
+    name: str
+    description: str = ""
+    story_id: str = ""
+    epic_id: str = ""
+    assigned_to: str = "Unassigned"
+    status: str = "todo"  # "todo", "in_progress", "done"
+    due_date: Optional[str] = None
+    start_date: Optional[str] = None
+    estimated_hours: float = 0
+    depends_on: List[str] = []  # list of task IDs
+
+class TaskItemUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    assigned_to: Optional[str] = None
+    due_date: Optional[str] = None
+    start_date: Optional[str] = None
+    estimated_hours: Optional[float] = None
+    actual_hours: Optional[float] = None
+    depends_on: Optional[List[str]] = None
 
 # --- MULTI-PROJECT ---
 class ProjectCreate(BaseModel):
@@ -101,3 +166,4 @@ class DashboardStats(BaseModel):
     finance_table: List[FinanceItem]
     user_display_name: Optional[str] = "Project Manager"
     team_workload: Optional[List[WorkloadItem]] = []
+    user_role: Optional[str] = "developer"  # For RBAC-aware UI

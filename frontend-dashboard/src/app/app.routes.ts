@@ -1,9 +1,11 @@
 import { Routes } from '@angular/router';
-import { DashboardComponent } from './dashboard/dashboard'; // 🚀 Remove .ts
-import { ChatComponent } from './chat/chat';           // 🚀 Remove .ts
-import { TeamComponent } from './team/team';           // 🚀 Remove .ts
-import { SettingsComponent } from './settings/settings'; // 🚀 Remove .ts
-import { LoginComponent } from './login/login';         // 🚀 Remove .ts
+import { DashboardComponent } from './dashboard/dashboard';
+import { ChatComponent } from './chat/chat';
+import { TeamComponent } from './team/team';
+import { SettingsComponent } from './settings/settings';
+import { LoginComponent } from './login/login';
+import { BacklogComponent } from './backlog/backlog';
+import { TimelineComponent } from './timeline/timeline';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -12,5 +14,7 @@ export const routes: Routes = [
   { path: 'chat', component: ChatComponent },
   { path: 'team', component: TeamComponent },
   { path: 'settings', component: SettingsComponent },
+  { path: 'backlog', component: BacklogComponent },
+  { path: 'timeline', component: TimelineComponent },
   { path: '**', redirectTo: 'dashboard' } 
 ];

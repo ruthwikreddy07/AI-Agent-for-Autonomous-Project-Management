@@ -8,7 +8,7 @@ credentials.json
 # Migration/Patch Scripts
 fix_server.py
 add_features.py
-
+feature_gap_analysis.md
 # Python
 __pycache__/
 *.py[cod]

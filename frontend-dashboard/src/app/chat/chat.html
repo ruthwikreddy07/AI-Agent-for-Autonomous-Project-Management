@@ -88,9 +88,12 @@
         <div *ngIf="showApprovalButtons" class="approval-card">
           <div class="approval-header">⚠️ APPROVAL REQUIRED</div>
           <p style="margin: 0 0 15px 0; color: var(--text-muted); font-size: 14px;">Plan generated. Do you want to proceed with execution?</p>
-          <div class="approval-actions">
+          <div class="approval-actions" *ngIf="isPM">
             <button class="btn-approve" (click)="onApprove()">Authorize</button>
             <button class="btn-reject" (click)="onReject()">Deny</button>
+          </div>
+          <div *ngIf="!isPM" style="padding: 10px 16px; background: #FFF3E0; border-radius: 10px; font-size: 13px; font-weight: 600; color: #E65100; text-align: center;">
+            🔒 Only Project Managers can approve plans. Awaiting PM authorization.
           </div>
         </div>
       </div>

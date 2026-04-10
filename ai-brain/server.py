@@ -152,6 +152,9 @@ users_collection = None
 employees_collection = None
 time_logs_collection = None
 projects_collection = None
+epics_collection = None
+stories_collection = None
+tasks_collection = None
 try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client["ai_project_manager"]
@@ -160,6 +163,9 @@ try:
     chats_collection = db["chats"]
     time_logs_collection = db["time_logs"]
     projects_collection = db["projects"]
+    epics_collection = db["epics"]
+    stories_collection = db["stories"]
+    tasks_collection = db["tasks"]
     client.admin.command("ping")
     print("✅ Connected to MongoDB")
 except Exception as e:
@@ -172,6 +178,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 from models import *
+from bson import ObjectId
 
 
 
@@ -340,6 +347,29 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         return username
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+def get_current_user_with_role(token: str = Depends(oauth2_scheme)):
+    """Decodes the token and returns (username, role) tuple."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        role: str = payload.get("role", "developer")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+        return {"username": username, "role": role}
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+def require_role(*allowed_roles):
+    """FastAPI dependency that checks if the user has the required role."""
+    def role_checker(user_info: dict = Depends(get_current_user_with_role)):
+        if user_info["role"] not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied. Required role: {', '.join(allowed_roles)}. Your role: {user_info['role']}"
+            )
+        return user_info
+    return role_checker
 
 def get_trello_id_by_email(email: str) -> str:
     if not TRELLO_API_KEY or not TRELLO_TOKEN:
@@ -1629,8 +1659,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         user = users_collection.find_one({"username": form_data.username})
         if not user or not pwd_context.verify(form_data.password, user["password"]):
             raise HTTPException(status_code=401, detail="Incorrect username or password")
-        token = jwt.encode({"sub": user["username"]}, SECRET_KEY, algorithm=ALGORITHM)
-        return {"access_token": token, "token_type": "bearer"}
+        user_role = user.get("role", "developer")
+        token = jwt.encode({"sub": user["username"], "role": user_role}, SECRET_KEY, algorithm=ALGORITHM)
+        return {"access_token": token, "token_type": "bearer", "role": user_role}
     except HTTPException:
         raise
     except Exception as e:
@@ -1641,11 +1672,20 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 async def register(user: User):
     if users_collection.find_one({"username": user.username}):
         raise HTTPException(status_code=400, detail="Exists")
-    users_collection.insert_one({"username": user.username, "password": pwd_context.hash(user.password)})
-    return {"msg": "Created"}
+    # First user auto-becomes admin
+    total_users = users_collection.count_documents({})
+    role = "admin" if total_users == 0 else user.role
+    if role not in VALID_ROLES:
+        role = "developer"
+    users_collection.insert_one({
+        "username": user.username,
+        "password": pwd_context.hash(user.password),
+        "role": role
+    })
+    return {"msg": f"Created with role: {role}"}
 
 @app.post("/employees")
-def add_employee(emp: Employee, username: str = Depends(get_current_user)):
+def add_employee(emp: Employee, user_info: dict = Depends(require_role("admin", "pm"))):
     try:
         if not emp.trello_id and emp.email:
             emp.trello_id = get_trello_id_by_email(emp.email)
@@ -1692,7 +1732,8 @@ def get_full_history(session_id: str, username: str = Depends(get_current_user))
         return {"error": str(e)}
 
 @app.post("/approve")
-def approve_plan(req: ApproveRequest, username: str = Depends(get_current_user)):
+def approve_plan(req: ApproveRequest, user_info: dict = Depends(require_role("admin", "pm"))):
+    username = user_info["username"]
     pending_plan = get_user_state(username)['pending_plan']
     if not pending_plan:
         return {"status": "No plan."}
@@ -1747,15 +1788,14 @@ def approve_plan(req: ApproveRequest, username: str = Depends(get_current_user))
 
     get_user_state(username)['pending_plan'] = None
     return {"reply": activation_msg}
-# 🚀 Update an existing employee
+# 🔐 RBAC: Only PM/Admin can modify employees
 @app.put("/employees/{email}")
-def update_employee(email: str, emp: Employee, username: str = Depends(get_current_user)):
+def update_employee(email: str, emp: Employee, user_info: dict = Depends(require_role("admin", "pm"))):
     employees_collection.update_one({"email": email}, {"$set": emp.dict()})
     return {"msg": "Updated successfully"}
 
-# 🚀 Delete an employee
 @app.delete("/employees/{email}")
-def delete_employee(email: str, username: str = Depends(get_current_user)):
+def delete_employee(email: str, user_info: dict = Depends(require_role("admin", "pm"))):
     employees_collection.delete_one({"email": email})
     return {"msg": "Deleted successfully"}
 
@@ -2052,10 +2092,11 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
                     pass
 
             # 🚀 FIND THE USER RECORD USING THE AUTHENTICATED USERNAME
-            user_record = users_collection.find_one({"username": username}, {"display_name": 1})
+            user_record = users_collection.find_one({"username": username}, {"display_name": 1, "role": 1})
             
             # 🚀 FALLBACK: If they haven't set a name yet, use "Project Manager"
             display_name = user_record.get("display_name", "Project Manager") if user_record else "Project Manager"
+            user_role = user_record.get("role", "developer") if user_record else "developer"
             return {
                 "tasks_due": tasks_due_today,
                 "overdue": overdue_tasks,
@@ -2088,7 +2129,8 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
                 "finance_table": finance_items[:5], # Top 5 High-Impact items
                 "team_workload": workload_items,
                 "burn_percentage": burn_percentage,
-                "burndown_chart": burndown_data
+                "burndown_chart": burndown_data,
+                "user_role": user_role
             }
 
     except Exception as e:
@@ -2180,6 +2222,362 @@ def trigger_workflow(workflow_id: str):
     # Logic to hit n8n webhook can go here
     return {"status": "triggered", "workflow_id": workflow_id}
 
+# ==========================================
+# 🔐 RBAC ENDPOINTS
+# ==========================================
+
+@app.get("/user/role")
+def get_user_role(username: str = Depends(get_current_user)):
+    """Returns the current user's role."""
+    user = users_collection.find_one({"username": username}, {"role": 1, "_id": 0})
+    return {"role": user.get("role", "developer") if user else "developer"}
+
+@app.put("/user/role/{target_username}")
+def update_user_role(target_username: str, role: str, user_info: dict = Depends(require_role("admin"))):
+    """Admin-only: Change a user's role."""
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {VALID_ROLES}")
+    users_collection.update_one({"username": target_username}, {"$set": {"role": role}})
+    return {"msg": f"Updated {target_username} to role: {role}"}
+
+# ==========================================
+# 📦 EPIC → STORY → TASK HIERARCHY
+# ==========================================
+
+@app.post("/epics")
+def create_epic(epic: EpicCreate, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Create a new Epic. PM/Admin only."""
+    doc = {
+        "name": epic.name,
+        "description": epic.description,
+        "project_id": epic.project_id,
+        "color": epic.color,
+        "status": "active",
+        "created_by": user_info["username"],
+        "created_at": datetime.now()
+    }
+    result = epics_collection.insert_one(doc)
+    return {"msg": f"Epic '{epic.name}' created", "id": str(result.inserted_id)}
+
+@app.get("/epics")
+def get_epics(username: str = Depends(get_current_user)):
+    """List all epics."""
+    epics = list(epics_collection.find({}, {"_id": 0}))
+    # Add string ID for frontend
+    all_epics = []
+    for e in epics_collection.find({}):
+        e["id"] = str(e["_id"])
+        del e["_id"]
+        all_epics.append(e)
+    return all_epics
+
+@app.put("/epics/{epic_id}")
+def update_epic(epic_id: str, epic: EpicUpdate, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Update an epic."""
+    update_data = {k: v for k, v in epic.dict().items() if v is not None}
+    epics_collection.update_one({"_id": ObjectId(epic_id)}, {"$set": update_data})
+    return {"msg": "Epic updated"}
+
+@app.delete("/epics/{epic_id}")
+def delete_epic(epic_id: str, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Delete an epic and all its stories/tasks."""
+    epics_collection.delete_one({"_id": ObjectId(epic_id)})
+    stories_collection.delete_many({"epic_id": epic_id})
+    tasks_collection.delete_many({"epic_id": epic_id})
+    return {"msg": "Epic and all children deleted"}
+
+# --- STORIES ---
+@app.post("/stories")
+def create_story(story: StoryCreate, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Create a story under an epic."""
+    doc = {
+        "name": story.name,
+        "description": story.description,
+        "epic_id": story.epic_id,
+        "story_points": story.story_points,
+        "assigned_to": story.assigned_to,
+        "status": "todo",
+        "created_by": user_info["username"],
+        "created_at": datetime.now()
+    }
+    result = stories_collection.insert_one(doc)
+    return {"msg": f"Story '{story.name}' created", "id": str(result.inserted_id)}
+
+@app.get("/stories")
+def get_stories(epic_id: str = None, username: str = Depends(get_current_user)):
+    """List stories, optionally filtered by epic_id."""
+    query = {"epic_id": epic_id} if epic_id else {}
+    all_stories = []
+    for s in stories_collection.find(query):
+        s["id"] = str(s["_id"])
+        del s["_id"]
+        all_stories.append(s)
+    return all_stories
+
+@app.put("/stories/{story_id}")
+def update_story(story_id: str, story: StoryUpdate, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Update a story."""
+    update_data = {k: v for k, v in story.dict().items() if v is not None}
+    stories_collection.update_one({"_id": ObjectId(story_id)}, {"$set": update_data})
+    return {"msg": "Story updated"}
+
+# --- TASKS (Hierarchy) ---
+@app.post("/tasks")
+def create_task(task: TaskItemCreate, username: str = Depends(get_current_user)):
+    """Create a task under a story/epic."""
+    doc = {
+        "name": task.name,
+        "description": task.description,
+        "story_id": task.story_id,
+        "epic_id": task.epic_id,
+        "assigned_to": task.assigned_to,
+        "status": task.status,
+        "due_date": task.due_date,
+        "start_date": task.start_date,
+        "estimated_hours": task.estimated_hours,
+        "actual_hours": 0,
+        "depends_on": task.depends_on,
+        "created_by": username,
+        "created_at": datetime.now()
+    }
+    result = tasks_collection.insert_one(doc)
+    return {"msg": f"Task '{task.name}' created", "id": str(result.inserted_id)}
+
+@app.get("/tasks")
+def get_tasks(story_id: str = None, epic_id: str = None, username: str = Depends(get_current_user)):
+    """List tasks, optionally filtered."""
+    query = {}
+    if story_id: query["story_id"] = story_id
+    if epic_id: query["epic_id"] = epic_id
+    all_tasks = []
+    for t in tasks_collection.find(query):
+        t["id"] = str(t["_id"])
+        del t["_id"]
+        all_tasks.append(t)
+    return all_tasks
+
+@app.put("/tasks/{task_id}")
+def update_task(task_id: str, task: TaskItemUpdate, username: str = Depends(get_current_user)):
+    """Update a task."""
+    update_data = {k: v for k, v in task.dict().items() if v is not None}
+    tasks_collection.update_one({"_id": ObjectId(task_id)}, {"$set": update_data})
+    return {"msg": "Task updated"}
+
+# --- WORK BREAKDOWN TREE ---
+@app.get("/work-breakdown")
+def get_work_breakdown(username: str = Depends(get_current_user)):
+    """Returns the full Epic → Story → Task tree."""
+    tree = []
+    for epic in epics_collection.find({}):
+        epic_id = str(epic["_id"])
+        epic_node = {
+            "id": epic_id,
+            "name": epic.get("name"),
+            "description": epic.get("description", ""),
+            "color": epic.get("color", "#6C5DD3"),
+            "status": epic.get("status", "active"),
+            "type": "epic",
+            "stories": []
+        }
+        
+        for story in stories_collection.find({"epic_id": epic_id}):
+            story_id = str(story["_id"])
+            story_node = {
+                "id": story_id,
+                "name": story.get("name"),
+                "description": story.get("description", ""),
+                "story_points": story.get("story_points", 0),
+                "assigned_to": story.get("assigned_to", "Unassigned"),
+                "status": story.get("status", "todo"),
+                "type": "story",
+                "tasks": []
+            }
+            
+            for task in tasks_collection.find({"story_id": story_id}):
+                task_node = {
+                    "id": str(task["_id"]),
+                    "name": task.get("name"),
+                    "description": task.get("description", ""),
+                    "assigned_to": task.get("assigned_to", "Unassigned"),
+                    "status": task.get("status", "todo"),
+                    "due_date": task.get("due_date"),
+                    "start_date": task.get("start_date"),
+                    "estimated_hours": task.get("estimated_hours", 0),
+                    "actual_hours": task.get("actual_hours", 0),
+                    "depends_on": task.get("depends_on", []),
+                    "type": "task"
+                }
+                story_node["tasks"].append(task_node)
+            
+            epic_node["stories"].append(story_node)
+        
+        # Also get tasks directly under epic (no story)
+        for task in tasks_collection.find({"epic_id": epic_id, "story_id": ""}):
+            task_node = {
+                "id": str(task["_id"]),
+                "name": task.get("name"),
+                "assigned_to": task.get("assigned_to", "Unassigned"),
+                "status": task.get("status", "todo"),
+                "due_date": task.get("due_date"),
+                "start_date": task.get("start_date"),
+                "type": "task"
+            }
+            epic_node["stories"].append(task_node)
+        
+        tree.append(epic_node)
+    
+    return tree
+
+# ==========================================
+# 📊 GANTT CHART DATA ENDPOINT
+# ==========================================
+
+@app.get("/gantt-data")
+def get_gantt_data(username: str = Depends(get_current_user)):
+    """Returns all tasks formatted for Gantt chart rendering with critical path."""
+    gantt_items = []
+    all_tasks_map = {}
+    
+    # 1. Build task list from MongoDB hierarchy
+    for task in tasks_collection.find({}):
+        task_id = str(task["_id"])
+        
+        # Look up epic name
+        epic_name = "Unassigned"
+        epic_color = "#6C5DD3"
+        if task.get("epic_id"):
+            epic = epics_collection.find_one({"_id": ObjectId(task["epic_id"])})
+            if epic:
+                epic_name = epic.get("name", "Unassigned")
+                epic_color = epic.get("color", "#6C5DD3")
+        
+        item = {
+            "id": task_id,
+            "name": task.get("name", "Task"),
+            "start_date": task.get("start_date"),
+            "end_date": task.get("due_date"),
+            "owner": task.get("assigned_to", "Unassigned"),
+            "status": task.get("status", "todo"),
+            "epic_name": epic_name,
+            "epic_color": epic_color,
+            "depends_on": task.get("depends_on", []),
+            "estimated_hours": task.get("estimated_hours", 0),
+            "is_critical_path": False
+        }
+        gantt_items.append(item)
+        all_tasks_map[task_id] = item
+    
+    # 2. Also pull in Trello cards as gantt items (for backward compatibility)
+    try:
+        if N8N_GET_ALL_CARDS_URL:
+            response = requests.get(N8N_GET_ALL_CARDS_URL, timeout=10)
+            if response.status_code == 200:
+                raw_data = response.json()
+                cards = raw_data if isinstance(raw_data, list) else raw_data.get("data", [])
+                trello_done_list = os.getenv("TRELLO_DONE_LIST_ID", "")
+                trello_in_progress_list = os.getenv("TRELLO_IN_PROGRESS_LIST_ID", "")
+                
+                for c in cards:
+                    if isinstance(c, dict) and "json" in c: c = c["json"]
+                    if not isinstance(c, dict): continue
+                    if not c.get("due"): continue
+                    
+                    card_id = c.get("id", "")
+                    # Skip if already in tasks_collection
+                    if card_id in all_tasks_map: continue
+                    
+                    # Determine status from list
+                    list_id = c.get("idList", "")
+                    status = "todo"
+                    if list_id == trello_done_list or c.get("dueComplete"):
+                        status = "done"
+                    elif list_id == trello_in_progress_list:
+                        status = "in_progress"
+                    
+                    # Extract owner from [Owner] prefix
+                    card_name = c.get("name", "")
+                    owner = "Unassigned"
+                    clean_name = card_name
+                    if "[" in card_name and "]" in card_name:
+                        owner = card_name.split("]")[0].replace("[", "").strip()
+                        clean_name = card_name.split("]")[1].strip()
+                    
+                    # Parse dependencies from description
+                    deps = []
+                    desc = c.get("desc", "")
+                    if "Blocked By:" in desc:
+                        try:
+                            blocker_part = desc.split("Blocked By:")[1].split("\n")[0]
+                            blocker_part = blocker_part.replace("*", "").strip()
+                            deps = [b.strip() for b in blocker_part.split(",") if b.strip()]
+                        except: pass
+                    
+                    # Calculate start date (due - duration estimate)
+                    try:
+                        due_dt = datetime.fromisoformat(c["due"].replace("Z", ""))
+                        # Estimate start from duration rules
+                        days = 2
+                        for k, v in DURATION_RULES.items():
+                            if k in clean_name.lower(): days = max(days, v)
+                        start_dt = due_dt - timedelta(days=days)
+                        start_str = start_dt.strftime("%Y-%m-%d")
+                        end_str = due_dt.strftime("%Y-%m-%d")
+                    except:
+                        start_str = None
+                        end_str = None
+                    
+                    item = {
+                        "id": card_id,
+                        "name": clean_name,
+                        "start_date": start_str,
+                        "end_date": end_str,
+                        "owner": owner,
+                        "status": status,
+                        "epic_name": "Trello Board",
+                        "epic_color": "#0079BF",
+                        "depends_on": deps,
+                        "estimated_hours": 0,
+                        "is_critical_path": False
+                    }
+                    gantt_items.append(item)
+                    all_tasks_map[card_id] = item
+    except Exception as e:
+        print(f"Gantt Trello fetch error: {e}")
+    
+    # 3. Compute Critical Path (longest dependency chain)
+    def get_chain_length(item_id, visited=None):
+        if visited is None: visited = set()
+        if item_id in visited: return 0
+        visited.add(item_id)
+        item = all_tasks_map.get(item_id)
+        if not item: return 0
+        deps = item.get("depends_on", [])
+        if not deps: return 1
+        max_dep_length = 0
+        for dep_name in deps:
+            # Find task by name match
+            for tid, t in all_tasks_map.items():
+                if dep_name.lower() in t.get("name", "").lower():
+                    dep_length = get_chain_length(tid, visited.copy())
+                    max_dep_length = max(max_dep_length, dep_length)
+        return 1 + max_dep_length
+    
+    # Find max chain and mark critical path
+    max_chain = 0
+    chain_lengths = {}
+    for item in gantt_items:
+        length = get_chain_length(item["id"])
+        chain_lengths[item["id"]] = length
+        max_chain = max(max_chain, length)
+    
+    # Mark tasks on the critical path (longest chain)
+    if max_chain > 1:
+        for item in gantt_items:
+            if chain_lengths.get(item["id"], 0) == max_chain:
+                item["is_critical_path"] = True
+    
+    return {"tasks": gantt_items, "total": len(gantt_items)}
+
 @app.get("/")
 def health_check():
     health_status = {
@@ -2195,3 +2593,4 @@ def health_check():
         except Exception as e:
             health_status["database"] = f"error: {str(e)}"
     return health_status
+
