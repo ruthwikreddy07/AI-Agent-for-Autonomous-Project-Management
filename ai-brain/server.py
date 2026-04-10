@@ -156,6 +156,8 @@ epics_collection = None
 stories_collection = None
 tasks_collection = None
 sprints_collection = None
+meetings_collection = None
+risks_collection = None
 try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client["ai_project_manager"]
@@ -168,6 +170,8 @@ try:
     stories_collection = db["stories"]
     tasks_collection = db["tasks"]
     sprints_collection = db["sprints"]
+    meetings_collection = db["meetings"]
+    risks_collection = db["risks"]
     client.admin.command("ping")
     print("✅ Connected to MongoDB")
 except Exception as e:
@@ -638,7 +642,18 @@ You are an Intelligent AI Project Manager.
     - Trigger words: "deadlines", "due soon", "urgent tasks", "overdue", "alerts".
     - Default to checking 2 days ahead. Sends alert to Slack automatically.
 
+🔟  **auto_plan_sprint**
+    - Use when user asks to plan a sprint or create a new sprint based on the backlog.
+    - Determines capacity based on dev team size and fills a sprint.
 
+1️⃣1️⃣  **predict_risks**
+    - Proactive Pre-Mortem AI. Use when user asks about risks, blockages, tight deadlines, or project health.
+    - Scans schedule, resources, dependencies, and budget across the project.
+    - Returns a ranked Risk Register.
+
+1️⃣2️⃣  **detect_scope_creep**
+    - Scope Creep AI. Use when user asks about sprint health, capacity, or if the current sprint is overloaded.
+    - Analyzes utilization % and identifies lower-priority tasks to defer if > 110%.
 
 ===========================
 📌  CRITICAL DECISION RULES
@@ -1501,8 +1516,192 @@ def auto_plan_sprint(sprint_name: str, duration_weeks: int = 2, focus_area: str 
     except Exception as e:
         return f"Error planning sprint: {e}"
 
+@tool
+def predict_risks(project_id: str = "default"):
+    """
+    Proactive Risk Prediction — scans the current project for scheduling, resource, budget, and dependency risks.
+    Generates a ranked Risk Register with probability × impact scoring.
+    Use when user asks about risks, potential problems, or project health.
+    """
+    try:
+        risks_found = []
+        today = datetime.now()
+
+        # --- 1. Schedule Risks: Tasks due within 2 days or overdue ---
+        all_tasks = list(tasks_collection.find({"status": {"$ne": "done"}}))
+        for t in all_tasks:
+            due = t.get("due_date") or t.get("end_date")
+            if due:
+                try:
+                    due_dt = datetime.strptime(due, "%Y-%m-%d") if isinstance(due, str) else due
+                    days_left = (due_dt - today).days
+                    if days_left < 0:
+                        risks_found.append({
+                            "title": f"OVERDUE: {t.get('name', 'Unknown task')}",
+                            "description": f"Task is {abs(days_left)} days overdue. Assigned to: {t.get('assigned_to', 'Unassigned')}",
+                            "category": "schedule", "probability": 5, "impact": 4
+                        })
+                    elif days_left <= 2:
+                        risks_found.append({
+                            "title": f"Tight deadline: {t.get('name', 'Unknown task')}",
+                            "description": f"Only {days_left} day(s) remaining. Assigned to: {t.get('assigned_to', 'Unassigned')}",
+                            "category": "schedule", "probability": 4, "impact": 3
+                        })
+                except:
+                    pass
+
+        # --- 2. Resource Risks: Over-allocated team members ---
+        owner_counts = {}
+        for t in all_tasks:
+            owner = t.get("assigned_to", "Unassigned")
+            if owner != "Unassigned":
+                owner_counts[owner] = owner_counts.get(owner, 0) + 1
+
+        for owner, count in owner_counts.items():
+            if count > 3:
+                risks_found.append({
+                    "title": f"Over-allocated: {owner}",
+                    "description": f"{owner} has {count} active tasks. Risk of burnout and delays.",
+                    "category": "resource", "probability": 4, "impact": 3
+                })
+
+        # --- 3. Unassigned Tasks ---
+        unassigned = [t for t in all_tasks if t.get("assigned_to", "Unassigned") == "Unassigned"]
+        if len(unassigned) > 2:
+            risks_found.append({
+                "title": f"{len(unassigned)} unassigned tasks in backlog",
+                "description": f"Tasks without owners: {', '.join([t.get('name','?') for t in unassigned[:5]])}",
+                "category": "resource", "probability": 3, "impact": 3
+            })
+
+        # --- 4. Dependency Chain Risks ---
+        for t in all_tasks:
+            deps = t.get("depends_on", [])
+            if len(deps) >= 3:
+                risks_found.append({
+                    "title": f"Long dependency chain: {t.get('name', 'Unknown')}",
+                    "description": f"Blocked by {len(deps)} tasks. Any delay cascades here.",
+                    "category": "dependency", "probability": 3, "impact": 4
+                })
+
+        # --- 5. Sprint Scope Creep Check ---
+        active_sprint = sprints_collection.find_one({"status": "active"})
+        if active_sprint:
+            capacity = active_sprint.get("capacity_hours", 0)
+            sprint_id = str(active_sprint["_id"])
+            sprint_tasks = list(tasks_collection.find({"sprint_id": sprint_id}))
+            assigned_hours = sum(t.get("estimated_hours", 4) for t in sprint_tasks)
+            if capacity > 0:
+                util = (assigned_hours / capacity) * 100
+                if util > 110:
+                    risks_found.append({
+                        "title": f"Sprint scope creep: {util:.0f}% utilization",
+                        "description": f"Sprint '{active_sprint.get('name')}' is overloaded. {assigned_hours:.0f}h assigned vs {capacity:.0f}h capacity.",
+                        "category": "scope", "probability": 5, "impact": 4
+                    })
+
+        # --- 6. Store in MongoDB ---
+        for r in risks_found:
+            r["risk_score"] = r["probability"] * r["impact"]
+            r["status"] = "open"
+            r["mitigation"] = ""
+            r["detected_at"] = today.strftime("%Y-%m-%d %H:%M")
+            r["project_id"] = project_id
+
+        if risks_found:
+            risks_collection.insert_many(risks_found)
+
+        # --- 7. Format Response ---
+        if not risks_found:
+            return "✅ No significant risks detected. The project looks healthy!"
+
+        risks_found.sort(key=lambda x: x["risk_score"], reverse=True)
+        msg = f"⚠️ Risk Analysis Complete — {len(risks_found)} risks detected:\n\n"
+        for i, r in enumerate(risks_found, 1):
+            severity = "🔴 Critical" if r["risk_score"] >= 16 else "🟠 High" if r["risk_score"] >= 9 else "🟡 Medium" if r["risk_score"] >= 4 else "🟢 Low"
+            msg += f"{i}. [{severity}] **{r['title']}** (Score: {r['risk_score']})\n   {r['description']}\n\n"
+
+        return msg
+
+    except Exception as e:
+        return f"Error analyzing risks: {e}"
+
+@tool
+def detect_scope_creep(sprint_id: str = ""):
+    """
+    Detects scope creep in the active sprint by comparing assigned work against capacity.
+    Warns when sprint exceeds 110% capacity and suggests items to defer.
+    Use when user asks about sprint health, scope creep, or sprint capacity.
+    """
+    try:
+        # Find sprint
+        if sprint_id:
+            sprint = sprints_collection.find_one({"_id": ObjectId(sprint_id)})
+        else:
+            sprint = sprints_collection.find_one({"status": "active"})
+
+        if not sprint:
+            return "No active sprint found. Create one first with auto_plan_sprint."
+
+        sid = str(sprint["_id"])
+        capacity = sprint.get("capacity_hours", 0)
+        if capacity == 0:
+            return f"Sprint '{sprint.get('name')}' has no capacity set. Cannot calculate scope health."
+
+        # Get sprint tasks
+        sprint_tasks = list(tasks_collection.find({"sprint_id": sid}))
+        assigned_hours = sum(t.get("estimated_hours", 4) for t in sprint_tasks)
+        utilization = (assigned_hours / capacity) * 100
+
+        # Categorize
+        if utilization <= 80:
+            status = "🟢 Healthy"
+            emoji = "✅"
+        elif utilization <= 100:
+            status = "🟡 Near capacity"
+            emoji = "⚠️"
+        elif utilization <= 110:
+            status = "🟠 At risk"
+            emoji = "🔶"
+        else:
+            status = "🔴 SCOPE CREEP"
+            emoji = "🚨"
+
+        msg = f"{emoji} Sprint Scope Health: **{status}**\n\n"
+        msg += f"📊 Sprint: {sprint.get('name')}\n"
+        msg += f"📦 Capacity: {capacity:.0f}h\n"
+        msg += f"📋 Assigned: {assigned_hours:.0f}h ({utilization:.0f}%)\n"
+        msg += f"📉 Remaining: {max(0, capacity - assigned_hours):.0f}h\n\n"
+
+        # If overloaded, suggest deferrals
+        if utilization > 110:
+            # Find lowest-priority unstarted tasks
+            unstarted = [t for t in sprint_tasks if t.get("status") == "todo"]
+            unstarted.sort(key=lambda x: x.get("estimated_hours", 4))
+
+            excess = assigned_hours - capacity
+            defer_list = []
+            deferred_hours = 0
+
+            for t in unstarted:
+                if deferred_hours >= excess:
+                    break
+                hours = t.get("estimated_hours", 4)
+                defer_list.append(t)
+                deferred_hours += hours
+
+            if defer_list:
+                msg += f"💡 **Defer Suggestions** (remove {deferred_hours:.0f}h to fix):\n"
+                for t in defer_list:
+                    msg += f"  → {t.get('name')} ({t.get('estimated_hours', 4):.0f}h) — {t.get('assigned_to', 'Unassigned')}\n"
+
+        return msg
+
+    except Exception as e:
+        return f"Error checking scope: {e}"
+
 # Bind tools
-llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time, send_deadline_alerts, auto_plan_sprint])
+llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time, send_deadline_alerts, auto_plan_sprint, predict_risks, detect_scope_creep])
 # ==========================================
 # 🧠 MEMORY & PERSISTENCE LAYER
 # ==========================================
@@ -1638,7 +1837,14 @@ def process_tool_calls(response, context_messages,username):
                 tool_result = log_time.invoke(args)
             elif fn == "send_deadline_alerts":
                 tool_result = send_deadline_alerts.invoke(args)
-            if fn == "consult_project_memory":
+            elif fn == "auto_plan_sprint":
+                args['username'] = username
+                tool_result = auto_plan_sprint.invoke(args)
+            elif fn == "predict_risks":
+                tool_result = predict_risks.invoke(args)
+            elif fn == "detect_scope_creep":
+                tool_result = detect_scope_creep.invoke(args)
+            elif fn == "consult_project_memory":
                 # ✅ INJECT USERNAME (AI doesn't provide this, we do)
                 args["username"] = username 
                 tool_result = consult_project_memory.invoke(args)
@@ -1663,7 +1869,7 @@ def process_tool_calls(response, context_messages,username):
 async def upload_document(file: UploadFile = File(...), username: str = Depends(get_current_user)):
     """
     Autonomous Trigger: Uploads doc, embeds it, and forces AI to analyze it.
-    TAGS the data with the current username so others can't see it.
+    If it detects a Meeting Transcript, it triggers the Meeting-to-Tasks Pipeline.
     """
     try:
         # 1. Read File
@@ -1682,8 +1888,72 @@ async def upload_document(file: UploadFile = File(...), username: str = Depends(
             })
         
         memory_index.upsert(vectors=vectors)
+
+        # 3. Meeting-to-Tasks Pipeline Check
+        is_meeting = any(k in file.filename.lower() for k in ["meeting", "transcript", "minutes", "standup"])
+        if not is_meeting and any(k in text.lower()[:500] for k in ["action item", "discussed", "attendees"]):
+            is_meeting = True
+
+        if is_meeting:
+            # Extract structured action items and summary
+            extract_prompt = f"""
+            Analyze this meeting transcript and extract the key information in JSON format EXACTLY matching this structure:
+            {{
+                "summary": "Brief 2-sentence summary",
+                "key_decisions": ["Decision 1", "Decision 2"],
+                "action_items": [
+                    {{"task": "Specific task to do", "owner": "Name of owner (or Unassigned)", "deadline": "YYYY-MM-DD (or empty)"}}
+                ]
+            }}
+            Transcript:
+            {text[:4000]} # Limit to 4k chars to avoid token limits
+            """
+            
+            try:
+                raw_response = llm.invoke([HumanMessage(content=extract_prompt)]).content
+                # Very basic JSON cleanup if LLM added markdown block
+                json_str = raw_response.replace("```json", "").replace("```", "").strip()
+                import json
+                meeting_data = json.loads(json_str)
+
+                # Auto-create Trello Cards for action items
+                cards_created = 0
+                for item in meeting_data.get("action_items", []):
+                    task_name = item.get("task")
+                    owner = item.get("owner", "Unassigned")
+                    if task_name:
+                        success, _ = internal_create_trello(task_name, f"From meeting: {file.filename}", owner)
+                        if success:
+                            cards_created += 1
+
+                # Save Meeting Record
+                record = {
+                    "filename": file.filename,
+                    "uploaded_by": username,
+                    "summary": meeting_data.get("summary", ""),
+                    "key_decisions": meeting_data.get("key_decisions", []),
+                    "action_items": meeting_data.get("action_items", []),
+                    "cards_created": cards_created,
+                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
+                }
+                meetings_collection.insert_one(record)
+
+                # Send Slack Recap
+                items_str = "\\n".join([f"• {i.get('task')} (Owner: {i.get('owner')})" for i in meeting_data.get("action_items", [])])
+                slack_msg = f"🎙️ **Meeting Processed:** {file.filename}\\n"
+                slack_msg += f"**Summary:** {meeting_data.get('summary')}\\n"
+                slack_msg += f"**Action Items (Cards created {cards_created}):**\\n{items_str}"
+                send_slack_announcement.invoke({"message": slack_msg})
+
+                final_reply = f"✅ Extracted meeting data from {file.filename}. Created {cards_created} Trello cards and posted recap to Slack."
+                save_chat_message("system_upload", "ai", final_reply)
+                return {"status": "processed", "reply": final_reply, "approval_required": False, "is_meeting": True}
+
+            except Exception as parse_error:
+                print(f"Failed to parse meeting pipeline JSON: {parse_error}")
+                # Fallback to normal upload if parsing fails...
         
-        # 3. AUTONOMOUS TRIGGER
+        # 4. Standard AUTONOMOUS TRIGGER
         system_trigger = f"""
         SYSTEM_EVENT: User uploaded '{file.filename}'. 
         Action Required:
@@ -1693,16 +1963,11 @@ async def upload_document(file: UploadFile = File(...), username: str = Depends(
         4. Simply reply: "✅ I have processed {file.filename} and stored it in memory. I am ready to use this context when you ask."
         """
         
-        # Save User's System Trigger
         save_chat_message("system_upload", "user", system_trigger)
-        
-        # 4. INVOKE & EXECUTE
         messages = [HumanMessage(content=system_trigger)]
         response = llm_with_tools.invoke(messages)
         
         final_reply, approval_required = process_tool_calls(response, messages, username)
-        
-        # ✅ ADD THIS LINE BACK (Saves the AI's reply to history)
         save_chat_message("system_upload", "ai", str(final_reply))
         
         return {"status": "processed", "reply": final_reply, "approval_required": approval_required}
@@ -2766,6 +3031,100 @@ def get_sprint_burndown(sprint_id: str, username: str = Depends(get_current_user
         "labels": dates,
         "ideal": ideal_line,
         "actual": actual_line
+    }
+
+# ==========================================
+# 📋 MEETINGS
+# ==========================================
+@app.get("/meetings")
+def get_meetings(username: str = Depends(get_current_user)):
+    """Get all processed meetings."""
+    ms = list(meetings_collection.find().sort("created_at", -1).limit(20))
+    for m in ms:
+        m["id"] = str(m["_id"])
+        del m["_id"]
+    return ms
+
+@app.get("/meetings/{meeting_id}")
+def get_meeting(meeting_id: str, username: str = Depends(get_current_user)):
+    m = meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    m["id"] = str(m["_id"])
+    del m["_id"]
+    return m
+
+# ==========================================
+# ⚠️ RISK REGISTER
+# ==========================================
+@app.get("/risk-register")
+def get_risk_register(project_id: str = "default", username: str = Depends(get_current_user)):
+    rs = list(risks_collection.find({"project_id": project_id}).sort("risk_score", -1))
+    for r in rs:
+        r["id"] = str(r["_id"])
+        del r["_id"]
+    return rs
+
+@app.put("/risk-register/{risk_id}")
+def update_risk(risk_id: str, risk_update: RiskUpdate, user_info: dict = Depends(require_role("admin", "pm"))):
+    update_data = {k: v for k, v in risk_update.dict().items() if v is not None}
+    if not update_data:
+        return {"msg": "No updates provided"}
+    
+    # If probability or impact is updated, recalculate score
+    if "probability" in update_data or "impact" in update_data:
+        curr = risks_collection.find_one({"_id": ObjectId(risk_id)})
+        prob = update_data.get("probability", curr.get("probability", 1))
+        imp = update_data.get("impact", curr.get("impact", 1))
+        update_data["risk_score"] = prob * imp
+        
+    risks_collection.update_one({"_id": ObjectId(risk_id)}, {"$set": update_data})
+    return {"msg": "Risk updated"}
+
+# ==========================================
+# 🔍 SPRINT SCOPE HEALTH
+# ==========================================
+@app.get("/sprints/{sprint_id}/scope-health")
+def get_sprint_scope_health(sprint_id: str, username: str = Depends(get_current_user)):
+    sprint = sprints_collection.find_one({"_id": ObjectId(sprint_id)})
+    if not sprint:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+        
+    capacity = sprint.get("capacity_hours", 0)
+    sprint_tasks = list(tasks_collection.find({"sprint_id": sprint_id}))
+    assigned_hours = sum(t.get("estimated_hours", 0) for t in sprint_tasks)
+    
+    if capacity == 0:
+        return {"capacity": 0, "assigned": assigned_hours, "utilization_pct": 0, "is_overloaded": False, "defer_suggestions": []}
+        
+    utilization_pct = (assigned_hours / capacity) * 100
+    is_overloaded = utilization_pct > 110
+    
+    defer_suggestions = []
+    if is_overloaded:
+        unstarted = [t for t in sprint_tasks if t.get("status") == "todo"]
+        unstarted.sort(key=lambda x: x.get("estimated_hours", 4))
+        
+        excess = assigned_hours - capacity
+        deferred_hours = 0
+        for t in unstarted:
+            if deferred_hours >= excess:
+                break
+            hours = t.get("estimated_hours", 4)
+            defer_suggestions.append({
+                "id": str(t["_id"]),
+                "name": t.get("name"),
+                "estimated_hours": hours,
+                "assigned_to": t.get("assigned_to", "Unassigned")
+            })
+            deferred_hours += hours
+            
+    return {
+        "capacity": capacity,
+        "assigned": assigned_hours,
+        "utilization_pct": round(utilization_pct, 1),
+        "is_overloaded": is_overloaded,
+        "defer_suggestions": defer_suggestions
     }
 
 @app.get("/")

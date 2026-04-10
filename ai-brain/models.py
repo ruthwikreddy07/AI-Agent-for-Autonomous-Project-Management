@@ -186,3 +186,46 @@ class DashboardStats(BaseModel):
     user_display_name: Optional[str] = "Project Manager"
     team_workload: Optional[List[WorkloadItem]] = []
     user_role: Optional[str] = "developer"  # For RBAC-aware UI
+
+# ==========================================
+# 📋 MEETING-TO-TASKS PIPELINE
+# ==========================================
+
+class MeetingActionItem(BaseModel):
+    task: str
+    owner: str = "Unassigned"
+    deadline: str = ""
+
+class MeetingRecord(BaseModel):
+    filename: str
+    uploaded_by: str
+    summary: str = ""
+    key_decisions: List[str] = []
+    action_items: List[MeetingActionItem] = []
+    cards_created: int = 0
+    created_at: Optional[str] = None
+
+# ==========================================
+# ⚠️ RISK PREDICTION (PRE-MORTEM AI)
+# ==========================================
+
+RISK_CATEGORIES = ["schedule", "resource", "budget", "technical", "dependency", "scope"]
+
+class RiskItem(BaseModel):
+    title: str
+    description: str = ""
+    category: str = "schedule"  # One of RISK_CATEGORIES
+    probability: int = 1        # 1-5
+    impact: int = 1             # 1-5
+    risk_score: int = 1         # probability * impact (auto-calculated)
+    status: str = "open"        # "open", "mitigated", "closed"
+    mitigation: str = ""
+    detected_at: Optional[str] = None
+    project_id: str = "default"
+
+class RiskUpdate(BaseModel):
+    status: Optional[str] = None       # "open", "mitigated", "closed"
+    mitigation: Optional[str] = None
+    probability: Optional[int] = None
+    impact: Optional[int] = None
+

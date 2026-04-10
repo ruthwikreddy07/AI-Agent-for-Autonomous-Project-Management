@@ -299,6 +299,37 @@ export class AiService {
   }
 
   // ==========================================
+  // 🎙️ MEETINGS & PRE-MORTEM AI (SPRINT 3)
+  // ==========================================
+  
+  getMeetings(): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    return this.http.get<any[]>(`${this.apiUrl}/meetings`, this.getAuthOptions());
+  }
+
+  getMeeting(id: string): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/meetings/${id}`, this.getAuthOptions());
+  }
+
+  getRiskRegister(projectId: string = 'default'): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    return this.http.get<any[]>(`${this.apiUrl}/risk-register?project_id=${projectId}`, this.getAuthOptions());
+  }
+
+  updateRisk(id: string, data: any): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/risk-register/${id}`, data, this.getAuthOptions());
+  }
+
+  getSprintScopeHealth(sprintId: string): Observable<any> {
+    if (this.USE_MOCK) return of({ capacity: 0, assigned: 0, utilization_pct: 0, is_overloaded: false, defer_suggestions: [] }).pipe(delay(300));
+    return this.http.get<any>(`${this.apiUrl}/sprints/${sprintId}/scope-health`, this.getAuthOptions());
+  }
+
+  predictRisks(): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/chat`, { message: "predict risks" }, this.getAuthOptions());
+  }
+
+  // ==========================================
   // 📊 GANTT CHART
   // ==========================================
   getGanttData(): Observable<any> {

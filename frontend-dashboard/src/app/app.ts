@@ -8,13 +8,15 @@ import { SettingsComponent } from './settings/settings';
 import { LoginComponent } from './login/login'; 
 import { BacklogComponent } from './backlog/backlog';
 import { TimelineComponent } from './timeline/timeline';
+import { RiskMatrixComponent } from './risk-matrix/risk-matrix';
+import { LandingComponent } from './landing/landing';
 import { AiService } from './ai.service'; 
 import { ChangeDetectorRef } from '@angular/core';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, DashboardComponent, ChatComponent, TeamComponent, SettingsComponent, LoginComponent, BacklogComponent, TimelineComponent],
+  imports: [CommonModule, DashboardComponent, ChatComponent, TeamComponent, SettingsComponent, LoginComponent, BacklogComponent, TimelineComponent, RiskMatrixComponent, LandingComponent],
   template: `
     <div *ngIf="showLoginModal" class="login-overlay">
       <app-login (loginSuccess)="onLoginSuccess()" (cancel)="showLoginModal = false"></app-login>
@@ -22,6 +24,11 @@ import { ChangeDetectorRef } from '@angular/core';
 
     <div style="height: 100vh;">
       
+      <app-landing
+        *ngIf="currentView === 'landing'"
+        (navigate)="onNavigate($event)">
+      </app-landing>
+
       <app-dashboard 
         *ngIf="currentView === 'dashboard'" 
         (navigate)="onNavigate($event)">
@@ -52,6 +59,11 @@ import { ChangeDetectorRef } from '@angular/core';
         (navigate)="onNavigate($event)">
       </app-timeline>
 
+      <app-risk-matrix
+        *ngIf="currentView === 'risks' && isAuthenticated"
+        (navigate)="onNavigate($event)">
+      </app-risk-matrix>
+
     </div>
   `,
   styles: [`
@@ -66,7 +78,7 @@ import { ChangeDetectorRef } from '@angular/core';
 export class App {
   isAuthenticated = false;
   showLoginModal = false;
-  currentView: string = 'dashboard';
+  currentView: string = 'landing';
 
   constructor(private aiService: AiService, private cdr: ChangeDetectorRef) {
     this.isAuthenticated = this.aiService.isLoggedIn();

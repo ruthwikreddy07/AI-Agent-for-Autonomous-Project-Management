@@ -1,0 +1,99 @@
+<div class="dashboard-container scrollable">
+  <div class="header-row">
+    <div>
+      <div class="breadcrumb" (click)="goBack()">← Back to Dashboard</div>
+      <h2 class="title">Pre-Mortem AI: Risk Register</h2>
+      <p class="subtitle">Predictive risk analysis based on current sprint and backlog data.</p>
+    </div>
+    <button class="btn btn-primary" (click)="triggerAIPredict()" [disabled]="loading">
+      <i class="fas fa-brain"></i> {{ loading ? 'Analyzing...' : 'Run Risk Analysis' }}
+    </button>
+  </div>
+
+  <div class="content-grid">
+    <!-- Matrix Panel -->
+    <div class="panel matrix-panel scale-in">
+      <h3 class="panel-title">Probability x Impact Matrix</h3>
+      
+      <div class="matrix-container">
+        <!-- Y-axis Label -->
+        <div class="y-axis-label">Probability</div>
+        
+        <div class="matrix-grid-wrapper">
+          <!-- Probability Labels (Left) -->
+          <div class="matrix-labels-left">
+            <span *ngFor="let lbl of probLabels">{{lbl}}</span>
+          </div>
+          
+          <!-- The 5x5 Grid -->
+          <div class="matrix-grid">
+            <ng-container *ngFor="let row of matrix; let i = index">
+              <div *ngFor="let cell of row; let j = index" 
+                   class="matrix-cell {{ getRiskColor(5-i, j+1) }}">
+                <div class="cell-count" *ngIf="cell.length > 0">{{ cell.length }}</div>
+              </div>
+            </ng-container>
+          </div>
+          
+          <!-- Impact Labels (Bottom) -->
+          <div class="matrix-labels-bottom">
+            <span *ngFor="let lbl of impactLabels">{{lbl}}</span>
+          </div>
+        </div>
+        
+        <!-- X-axis Label -->
+        <div class="x-axis-label">Impact</div>
+      </div>
+      
+      <div class="matrix-legend">
+        <span class="legend-item"><span class="legend-color bg-critical"></span> Critical (16-25)</span>
+        <span class="legend-item"><span class="legend-color bg-high"></span> High (10-15)</span>
+        <span class="legend-item"><span class="legend-color bg-medium"></span> Medium (5-9)</span>
+        <span class="legend-item"><span class="legend-color bg-low"></span> Low (1-4)</span>
+      </div>
+    </div>
+
+    <!-- Risks List Panel -->
+    <div class="panel risks-panel slide-up">
+      <h3 class="panel-title">Identified Risks</h3>
+      <div class="loading-state" *ngIf="loading">
+        <div class="spinner"></div>
+        <p>AI is scanning dependencies and workloads...</p>
+      </div>
+
+      <div class="empty-state" *ngIf="!loading && risks.length === 0">
+        <p>No risks detected. Run an analysis to scan the schedule.</p>
+      </div>
+
+      <div class="risk-list" *ngIf="!loading && risks.length > 0">
+        <div class="risk-card" *ngFor="let risk of risks">
+          <div class="risk-card-header">
+            <h4>{{ getSeverityIcon(risk.risk_score) }} {{ risk.title }}</h4>
+            <div class="score-badge {{ getRiskColor(risk.probability, risk.impact) }}">
+              Score: {{ risk.risk_score }}
+            </div>
+          </div>
+          
+          <p class="risk-desc">{{ risk.description }}</p>
+          
+          <div class="risk-meta">
+            <span><strong>Category:</strong> <span class="cap">{{ risk.category }}</span></span>
+            <span><strong>Prob/Impact:</strong> {{ risk.probability }} / {{ risk.impact }}</span>
+          </div>
+          
+          <div class="risk-footer">
+            <select class="status-select" 
+                    [ngClass]="'status-' + risk.status"
+                    [(ngModel)]="risk.status" 
+                    (change)="updateRiskStatus(risk, risk.status)">
+              <option value="open">Open</option>
+              <option value="mitigated">Mitigated</option>
+              <option value="closed">Closed</option>
+            </select>
+            <span class="detected-date">Detected: {{ risk.detected_at | slice:0:10 }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

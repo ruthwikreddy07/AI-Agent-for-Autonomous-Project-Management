@@ -1,17 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Autonomous AI Project Manager — An intelligent agent that reasons, plans, and executes project management workflows powered by Groq LLMs, Gemini Embeddings, and Pinecone Vector Memory.">
-    <title>Autonomous AI Project Manager | Intelligent Project Orchestration</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="index.css">
-</head>
-<body>
-    <!-- Scroll Progress Bar -->
+<!-- Scroll Progress Bar -->
     <div class="scroll-progress" id="scroll-progress"></div>
 
     <!-- Custom Cursor Glow -->
@@ -40,10 +27,10 @@
                 <a href="#tech-stack">Tech Stack</a>
             </div>
             <div class="nav-actions">
-                <a href="http://localhost:4200" target="_blank" class="btn btn-ghost">
+                <button (click)="navigateToDashboard()" class="btn btn-ghost" style="font-family: 'Inter', sans-serif;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
                     Open Dashboard
-                </a>
+                </button>
                 <a href="https://github.com/ruthwikreddy07/AI-Agent-for-Autonomous-Project-Management" target="_blank" class="btn btn-primary">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
                     GitHub
@@ -69,10 +56,10 @@
             </h1>
             <p class="hero-subtitle">An intelligent agent that autonomously reasons, plans, and executes project management workflows — with self-healing schedules, cost-aware planning, and real-time integrations.</p>
             <div class="hero-actions">
-                <a href="http://localhost:4200" target="_blank" class="btn btn-lg btn-primary btn-glow">
+                <button (click)="navigateToDashboard()" class="btn btn-lg btn-primary btn-glow" style="font-family: 'Inter', sans-serif;">
                     <span>Launch Dashboard</span>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                </a>
+                </button>
                 <a href="https://github.com/ruthwikreddy07/AI-Agent-for-Autonomous-Project-Management" target="_blank" class="btn btn-lg btn-outline">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
                     <span>View on GitHub</span>
@@ -90,7 +77,7 @@
         </div>
         <div class="hero-visual">
             <div class="hero-image-wrapper">
-                <img src="hero-brain.png" alt="AI Neural Network Brain Visualization" class="hero-image">
+                <img src="assets/hero-brain.png" alt="AI Neural Network Brain Visualization" class="hero-image">
                 <div class="orbit-ring ring-1"><div class="orbit-dot"></div></div>
                 <div class="orbit-ring ring-2"><div class="orbit-dot"></div></div>
                 <div class="orbit-ring ring-3"><div class="orbit-dot"></div></div>
@@ -289,66 +276,66 @@
             <div class="integrations-grid">
                 <div class="integration-card"><div class="int-icon" style="--accent:#0079BF"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 2H3c-.5 0-1 .5-1 1v18c0 .5.5 1 1 1h18c.5 0 1-.5 1-1V3c0-.5-.5-1-1-1zM10.4 18.8H5.2c-.4 0-.7-.3-.7-.7V5.2c0-.4.3-.7.7-.7h5.2c.4 0 .7.3.7.7v12.9c0 .4-.3.7-.7.7zm8.4-6H13.6c-.4 0-.7-.3-.7-.7V5.2c0-.4.3-.7.7-.7h5.2c.4 0 .7.3.7.7v6.9c0 .4-.3.7-.7.7z"/></svg></div><h3>Trello</h3><p>Auto-create labelled cards with assignees, due dates, and dependency annotations</p></div>
                 <div class="integration-card"><div class="int-icon" style="--accent:#4A154B"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg></div><h3>Slack</h3><p>Automated announcements, standup reports, meeting alerts, and urgent notifications</p></div>
-                <div class="integration-card"><div class="int-icon" style="--accent:#4285F4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg></div><h3>Google Calendar</h3><p>Smart availability checking, meeting booking with Meet links, and focus time scheduling</p></div>
-                <div class="integration-card"><div class="int-icon" style="--accent:#EA4335"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></svg></div><h3>Gmail</h3><p>Emergency email alerts dispatched to assignees when tasks are flagged as critical</p></div>
-                <div class="integration-card"><div class="int-icon" style="--accent:#f5f5f5"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></div><h3>GitHub</h3><p>Push webhook sync — commit messages auto-move Trello cards between lists</p></div>
-                <div class="integration-card"><div class="int-icon" style="--accent:#EA4B71"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-.857 17.571H7.714v-3.428h3.429v3.428zm4.286 0h-3.429v-3.428h3.429v3.428zm0-4.285H7.714V6.429h7.715v6.857z"/></svg></div><h3>n8n</h3><p>8 active automation workflows — the middleware brain connecting all integrations</p></div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Demo Preview Section -->
-    <section class="section demo" id="demo">
-        <div class="container">
-            <div class="section-header">
-                <span class="section-tag">Live Preview</span>
-                <h2 class="section-title">See It In <span class="gradient-text">Action</span></h2>
-                <p class="section-desc">A fully interactive Angular 20 SSR dashboard with real-time Trello analytics, AI chat, and team management.</p>
-            </div>
-            <div class="demo-tabs">
-                <button class="demo-tab active" data-tab="dashboard">📊 Dashboard</button>
-                <button class="demo-tab" data-tab="chat">💬 AI Chat</button>
-            </div>
-            <div class="demo-showcase">
-                <div class="demo-panel active" id="panel-dashboard">
-                    <div class="demo-frame">
-                        <div class="frame-header"><span class="frame-dot red"></span><span class="frame-dot yellow"></span><span class="frame-dot green"></span><span class="frame-url">localhost:4200/dashboard</span></div>
-                        <img src="dashboard-preview.png" alt="AI Project Manager Dashboard Preview" class="demo-img">
-                    </div>
-                    <div class="demo-features">
-                        <div class="demo-feat"><span>📈</span> Real-time task timeline (14-day line chart)</div>
-                        <div class="demo-feat"><span>🍩</span> Task status distribution (donut chart)</div>
-                        <div class="demo-feat"><span>💰</span> Financial burn rate analysis table</div>
-                        <div class="demo-feat"><span>🤖</span> Active n8n workflow counter</div>
-                    </div>
-                    <div style="text-align:center;margin-top:20px">
-                        <a href="http://localhost:4200/dashboard" target="_blank" class="btn btn-primary btn-glow">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                            <span>Open Dashboard</span>
-                        </a>
-                    </div>
-                </div>
-                <div class="demo-panel" id="panel-chat">
-                    <div class="demo-frame">
-                        <div class="frame-header"><span class="frame-dot red"></span><span class="frame-dot yellow"></span><span class="frame-dot green"></span><span class="frame-url">localhost:4200/chat</span></div>
-                        <img src="chat-preview.png" alt="AI Chat Interface Preview" class="demo-img">
-                    </div>
-                    <div class="demo-features">
-                        <div class="demo-feat"><span>🧠</span> Natural language project planning</div>
-                        <div class="demo-feat"><span>✅</span> One-click plan approval / rejection</div>
-                        <div class="demo-feat"><span>📄</span> Document upload with RAG retrieval</div>
-                        <div class="demo-feat"><span>💬</span> Session-based chat memory</div>
-                    </div>
-                    <div style="text-align:center;margin-top:20px">
-                        <a href="http://localhost:4200/chat" target="_blank" class="btn btn-primary btn-glow">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                            <span>Open AI Chat</span>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
+293:                 <div class="integration-card"><div class="int-icon" style="--accent:#4285F4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg></div><h3>Google Calendar</h3><p>Smart availability checking, meeting booking with Meet links, and focus time scheduling</p></div>
+294:                 <div class="integration-card"><div class="int-icon" style="--accent:#EA4335"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></svg></div><h3>Gmail</h3><p>Emergency email alerts dispatched to assignees when tasks are flagged as critical</p></div>
+295:                 <div class="integration-card"><div class="int-icon" style="--accent:#f5f5f5"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></div><h3>GitHub</h3><p>Push webhook sync — commit messages auto-move Trello cards between lists</p></div>
+296:                 <div class="integration-card"><div class="int-icon" style="--accent:#EA4B71"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-.857 17.571H7.714v-3.428h3.429v3.428zm4.286 0h-3.429v-3.428h3.429v3.428zm0-4.285H7.714V6.429h7.715v6.857z"/></svg></div><h3>n8n</h3><p>8 active automation workflows — the middleware brain connecting all integrations</p></div>
+297:             </div>
+298:         </div>
+299:     </section>
+300: 
+301:     <!-- Demo Preview Section -->
+302:     <section class="section demo" id="demo">
+303:         <div class="container">
+304:             <div class="section-header">
+305:                 <span class="section-tag">Live Preview</span>
+306:                 <h2 class="section-title">See It In <span class="gradient-text">Action</span></h2>
+307:                 <p class="section-desc">A fully interactive Angular 20 SSR dashboard with real-time Trello analytics, AI chat, and team management.</p>
+308:             </div>
+309:             <div class="demo-tabs">
+310:                 <button class="demo-tab active" data-tab="dashboard">📊 Dashboard</button>
+311:                 <button class="demo-tab" data-tab="chat">💬 AI Chat</button>
+312:             </div>
+313:             <div class="demo-showcase">
+314:                 <div class="demo-panel active" id="panel-dashboard">
+315:                     <div class="demo-frame">
+316:                         <div class="frame-header"><span class="frame-dot red"></span><span class="frame-dot yellow"></span><span class="frame-dot green"></span><span class="frame-url">localhost:4200/dashboard</span></div>
+317:                         <img src="assets/dashboard-preview.png" alt="AI Project Manager Dashboard Preview" class="demo-img">
+318:                     </div>
+319:                     <div class="demo-features">
+320:                         <div class="demo-feat"><span>📈</span> Real-time task timeline (14-day line chart)</div>
+321:                         <div class="demo-feat"><span>🍩</span> Task status distribution (donut chart)</div>
+322:                         <div class="demo-feat"><span>💰</span> Financial burn rate analysis table</div>
+323:                         <div class="demo-feat"><span>🤖</span> Active n8n workflow counter</div>
+324:                     </div>
+325:                     <div style="text-align:center;margin-top:20px">
+326:                         <button (click)="navigateToDashboard()" class="btn btn-primary btn-glow" style="font-family: 'Inter', sans-serif;">
+327:                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+328:                             <span>Open Dashboard</span>
+329:                         </button>
+330:                     </div>
+331:                 </div>
+332:                 <div class="demo-panel" id="panel-chat">
+333:                     <div class="demo-frame">
+334:                         <div class="frame-header"><span class="frame-dot red"></span><span class="frame-dot yellow"></span><span class="frame-dot green"></span><span class="frame-url">localhost:4200/chat</span></div>
+335:                         <img src="assets/chat-preview.png" alt="AI Chat Interface Preview" class="demo-img">
+336:                     </div>
+337:                     <div class="demo-features">
+338:                         <div class="demo-feat"><span>🧠</span> Natural language project planning</div>
+339:                         <div class="demo-feat"><span>✅</span> One-click plan approval / rejection</div>
+340:                         <div class="demo-feat"><span>📄</span> Document upload with RAG retrieval</div>
+341:                         <div class="demo-feat"><span>💬</span> Session-based chat memory</div>
+342:                     </div>
+343:                     <div style="text-align:center;margin-top:20px">
+344:                         <button (click)="navigateToDashboard()" class="btn btn-primary btn-glow" style="font-family: 'Inter', sans-serif;">
+345:                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+346:                             <span>Open AI Chat</span>
+347:                         </button>
+348:                     </div>
+349:                 </div>
+350:             </div>
+351:         </div>
+352:     </section>
 
     <!-- Tech Stack Section -->
     <section class="section tech-stack" id="tech-stack">
@@ -380,10 +367,10 @@
                 <h2>Ready to Automate Your<br><span class="gradient-text">Project Management?</span></h2>
                 <p>Clone the repo, configure your integrations, and let the AI handle the rest.</p>
                 <div class="cta-actions">
-                    <a href="http://localhost:4200" target="_blank" class="btn btn-lg btn-primary btn-glow">
+                    <button (click)="navigateToDashboard()" class="btn btn-lg btn-primary btn-glow" style="font-family: 'Inter', sans-serif;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
                         <span>Launch Dashboard</span>
-                    </a>
+                    </button>
                     <a href="https://github.com/ruthwikreddy07/AI-Agent-for-Autonomous-Project-Management" target="_blank" class="btn btn-lg btn-outline">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
                         <span>Clone Repository</span>
@@ -394,29 +381,25 @@
     </section>
 
     <!-- Footer -->
-    <footer class="footer">
+    <section class="footer" style="padding-bottom: 2rem;">
         <div class="container">
-            <div class="footer-content">
+            <div class="footer-content" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 2rem; display: flex; justify-content: space-between;">
                 <div class="footer-brand">
-                    <div class="nav-logo">
-                        <div class="logo-icon"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="url(#logoGrad2)" stroke-width="2.5"/><path d="M10 20L16 10L22 20" stroke="url(#logoGrad2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="3" fill="url(#logoGrad2)"/><defs><linearGradient id="logoGrad2" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs></svg></div>
-                        <span>AI Project Manager</span>
+                    <div class="nav-logo" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                        <div class="logo-icon" style="width: 24px; height: 24px;"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="url(#logoGrad2)" stroke-width="2.5"/><path d="M10 20L16 10L22 20" stroke="url(#logoGrad2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="3" fill="url(#logoGrad2)"/><defs><linearGradient id="logoGrad2" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs></svg></div>
+                        <span style="font-weight: 600; color: #fff;">AI Project Manager</span>
                     </div>
-                    <p>Autonomous AI-powered project orchestration for modern teams.</p>
+                    <p style="color: #94A3B8; font-size: 0.9rem;">Autonomous AI-powered project orchestration for modern teams.</p>
                 </div>
-                <div class="footer-team">
-                    <h4>Built By</h4>
-                    <a href="https://github.com/ruthwikreddy07" target="_blank">Ruthwik Reddy</a>
-                    <a href="https://github.com/Ninishareddy49" target="_blank">Ninisha Reddy</a>
-                    <a href="https://github.com/ashureddy02" target="_blank">Ashritha Reddy</a>
+                <div class="footer-team" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <h4 style="color: #fff; margin: 0 0 0.5rem 0;">Built By</h4>
+                    <a href="https://github.com/ruthwikreddy07" target="_blank" style="color: #94A3B8; text-decoration: none;">Ruthwik Reddy</a>
+                    <a href="https://github.com/Ninishareddy49" target="_blank" style="color: #94A3B8; text-decoration: none;">Ninisha Reddy</a>
+                    <a href="https://github.com/ashureddy02" target="_blank" style="color: #94A3B8; text-decoration: none;">Ashritha Reddy</a>
                 </div>
             </div>
-            <div class="footer-bottom">
+            <div class="footer-bottom" style="text-align: center; color: #64748B; font-size: 0.8rem; margin-top: 2rem;">
                 <p>&copy; 2026 Autonomous AI Project Manager. MIT License.</p>
             </div>
         </div>
-    </footer>
-
-    <script src="main.js"></script>
-</body>
-</html>
+    </section>

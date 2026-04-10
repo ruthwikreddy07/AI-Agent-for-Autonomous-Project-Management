@@ -6,9 +6,11 @@ import { SettingsComponent } from './settings/settings';
 import { LoginComponent } from './login/login';
 import { BacklogComponent } from './backlog/backlog';
 import { TimelineComponent } from './timeline/timeline';
+import { RiskMatrixComponent } from './risk-matrix/risk-matrix';
+import { LandingComponent } from './landing/landing';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'login', pathMatch: 'full' },
+  { path: '', component: LandingComponent },
   { path: 'login', component: LoginComponent },
   { path: 'dashboard', component: DashboardComponent },
   { path: 'chat', component: ChatComponent },
@@ -16,5 +18,6 @@ export const routes: Routes = [
   { path: 'settings', component: SettingsComponent },
   { path: 'backlog', component: BacklogComponent },
   { path: 'timeline', component: TimelineComponent },
+  { path: 'risks', component: RiskMatrixComponent },
   { path: '**', redirectTo: 'dashboard' } 
 ];

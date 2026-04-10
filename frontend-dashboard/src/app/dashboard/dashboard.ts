@@ -41,6 +41,8 @@ stats: any = {
 };
   isPM = false;
   financeData: any[] = [];
+  recentMeetings: any[] = [];
+  scopeHealth: any = null;
 
   // --- Multi-Project ---
   projects: any[] = [];
@@ -58,6 +60,7 @@ stats: any = {
     this.loadRealData();
     this.loadTrelloLink();
     this.loadProjects();
+    this.loadSprint3Data();
   }
 
   ngAfterViewInit(): void {
@@ -203,6 +206,24 @@ getPercentage(value: number | undefined): string {
 }
 
 // 🚀 Add these below:
+loadSprint3Data() {
+  this.aiService.getMeetings().subscribe({
+    next: (data: any[]) => this.recentMeetings = data.slice(0, 3)
+  });
+  
+  // Try to load active sprint scope health
+  this.aiService.getSprints().subscribe({
+    next: (sprints: any[]) => {
+      const active = sprints.find(s => s.status === 'active');
+      if (active) {
+        this.aiService.getSprintScopeHealth(active.id).subscribe({
+          next: (data) => this.scopeHealth = data
+        });
+      }
+    }
+  });
+}
+
 loadTrelloLink() {
   const savedLinks = localStorage.getItem('nexus_links');
   if (savedLinks) {
