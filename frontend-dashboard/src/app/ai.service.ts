@@ -224,6 +224,27 @@ export class AiService {
   }
 
   // ==========================================
+  // 🏃 SPRINT MANAGEMENT
+  // ==========================================
+  getSprints(projectId: string = 'default'): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    return this.http.get<any[]>(`${this.apiUrl}/sprints?project_id=${projectId}`, this.getAuthOptions());
+  }
+
+  createSprint(sprint: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/sprints`, sprint, this.getAuthOptions());
+  }
+
+  updateSprint(sprintId: string, sprint: any): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/sprints/${sprintId}`, sprint, this.getAuthOptions());
+  }
+
+  getSprintBurndown(sprintId: string): Observable<any> {
+    if (this.USE_MOCK) return of({ labels: [], ideal: [], actual: [] }).pipe(delay(300));
+    return this.http.get<any>(`${this.apiUrl}/sprints/${sprintId}/burndown`, this.getAuthOptions());
+  }
+
+  // ==========================================
   // 📦 EPIC → STORY → TASK HIERARCHY
   // ==========================================
   getEpics(): Observable<any[]> {

@@ -333,9 +333,9 @@
           style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 15px; margin-bottom: 15px;">
           <div style="flex: 1; min-width: 0;">
             <h3 style="margin: 0; font-size: 18px; color: var(--text-main);">
-              Budget & Resource Snapshot
+              Financial Health & Cost Reconciliation
             </h3>
-            <span class="subtitle">Real-time spending tracked from approved plans.</span>
+            <span class="subtitle">Actual vs Estimated Cost variance tracked from live sprint data.</span>
           </div>
 
           <div style="text-align: right; flex-shrink: 0; padding-left: 20px;">
@@ -354,23 +354,62 @@
             <thead>
               <tr>
                 <th>DATE</th>
-                <th>CATEGORY</th>
-                <th>DETAILS</th>
-                <th>AMOUNT</th>
-                <th>STATUS</th>
+                <th>TASK / PHASE</th>
+                <th>BUDGET (EST)</th>
+                <th>SPENT (ACTUAL)</th>
+                <th>VARIANCE HEALTH</th>
               </tr>
             </thead>
             <tbody>
               <tr *ngFor="let item of financeData">
                 <td class="text-muted">{{ item.date }}</td>
-                <td>{{ item.category }}</td>
-                <td class="font-medium">{{ item.details }}</td>
-                <td [ngClass]="item.isPositive ? 'text-green' : 'text-default'">{{ item.amount }}</td>
+                <td class="font-medium">
+                  {{ item.details }}
+                  <div style="font-size: 10px; color: #808191; margin-top: 2px;">{{ item.category }}</div>
+                </td>
+                
+                <td *ngIf="item.estimated_hours !== undefined && item.estimated_hours !== null">
+                  <div>${{ (item.estimated_hours * 50) | number:'1.0-0' }}</div>
+                  <div style="font-size: 10px; color: #808191;">{{ item.estimated_hours }}h est</div>
+                </td>
+                <td *ngIf="item.estimated_hours === undefined || item.estimated_hours === null">
+                  {{ item.isPositive ? '+' : '' }}{{ item.amount }}
+                </td>
+
+                <td *ngIf="item.actual_hours !== undefined && item.actual_hours !== null">
+                   <div>${{ (item.actual_hours * 50) | number:'1.0-0' }}</div>
+                   <div style="font-size: 10px; color: #808191;">{{ item.actual_hours }}h logged</div>
+                </td>
+                <td *ngIf="item.actual_hours === undefined || item.actual_hours === null" class="text-muted">
+                  --
+                </td>
+
                 <td>
-                  <div class="status-indicator"
-                    [ngClass]="{'completed': item.status === 'Completed', 'pending': item.status === 'Active'}">
-                    <span class="dot-small"></span> {{ item.status }}
-                  </div>
+                  <ng-container *ngIf="item.estimated_hours !== undefined && item.estimated_hours !== null">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <div style="flex: 1; height: 6px; background: #E2E8F0; border-radius: 3px; overflow: hidden; position: relative;">
+                         <div [style.width.%]="(item.actual_hours / (item.estimated_hours || 1)) * 100"
+                              [style.background]="(item.actual_hours > item.estimated_hours) ? '#EF4444' : ((item.actual_hours > item.estimated_hours * 0.8) ? '#F59E0B' : '#10B981')"
+                              style="height: 100%; position: absolute; left: 0; top: 0; border-radius: 3px;"></div>
+                      </div>
+                      <div class="status-indicator"
+                        [ngClass]="{
+                          'completed': item.actual_hours <= item.estimated_hours, 
+                          'pending': item.actual_hours > item.estimated_hours
+                        }"
+                        [style.color]="(item.actual_hours > item.estimated_hours) ? '#EF4444' : ''"
+                        [style.background]="(item.actual_hours > item.estimated_hours) ? '#FEE2E2' : ''">
+                        <span class="dot-small" [style.background]="(item.actual_hours > item.estimated_hours) ? '#EF4444' : ''"></span> 
+                        {{ item.actual_hours > item.estimated_hours ? 'Over Budget' : 'On Track' }}
+                      </div>
+                    </div>
+                  </ng-container>
+                  
+                  <ng-container *ngIf="item.estimated_hours === undefined || item.estimated_hours === null">
+                    <div class="status-indicator" [ngClass]="{'completed': item.status === 'Completed' || item.status === 'Released', 'pending': item.status === 'Active' || item.status === 'Allocated'}">
+                      <span class="dot-small"></span> {{ item.status }}
+                    </div>
+                  </ng-container>
                 </td>
               </tr>
             </tbody>

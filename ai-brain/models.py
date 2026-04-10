@@ -90,6 +90,7 @@ class TaskItemCreate(BaseModel):
     description: str = ""
     story_id: str = ""
     epic_id: str = ""
+    sprint_id: str = ""
     assigned_to: str = "Unassigned"
     status: str = "todo"  # "todo", "in_progress", "done"
     due_date: Optional[str] = None
@@ -100,6 +101,7 @@ class TaskItemCreate(BaseModel):
 class TaskItemUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    sprint_id: Optional[str] = None
     status: Optional[str] = None
     assigned_to: Optional[str] = None
     due_date: Optional[str] = None
@@ -107,6 +109,23 @@ class TaskItemUpdate(BaseModel):
     estimated_hours: Optional[float] = None
     actual_hours: Optional[float] = None
     depends_on: Optional[List[str]] = None
+
+# --- SPRINT MANAGEMENT ---
+class SprintCreate(BaseModel):
+    name: str
+    goal: str = ""
+    start_date: str
+    end_date: str
+    capacity_hours: float = 0
+    project_id: str = "default"
+
+class SprintUpdate(BaseModel):
+    name: Optional[str] = None
+    goal: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    capacity_hours: Optional[float] = None
+    status: Optional[str] = None  # "planning", "active", "completed"
 
 # --- MULTI-PROJECT ---
 class ProjectCreate(BaseModel):

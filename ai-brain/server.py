@@ -155,6 +155,7 @@ projects_collection = None
 epics_collection = None
 stories_collection = None
 tasks_collection = None
+sprints_collection = None
 try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client["ai_project_manager"]
@@ -166,6 +167,7 @@ try:
     epics_collection = db["epics"]
     stories_collection = db["stories"]
     tasks_collection = db["tasks"]
+    sprints_collection = db["sprints"]
     client.admin.command("ping")
     print("✅ Connected to MongoDB")
 except Exception as e:
@@ -1436,10 +1438,71 @@ def send_deadline_alerts(days_ahead: int = 2):
     except Exception as e:
         return f"Error checking deadlines: {e}"
 
+@tool
+def auto_plan_sprint(sprint_name: str, duration_weeks: int = 2, focus_area: str = "", username: str = "default"):
+    """
+    Intelligently reads the project backlog and plans a new sprint based on team capacity.
+    Provides an optional focus_area (e.g. 'checkout', 'security') to prioritize related tasks.
+    """
+    try:
+        # 1. Calculate Capacity
+        devs = list(employees_collection.find())
+        # Assume 6 productive hours / day / dev. 5 days a week.
+        sprint_days = duration_weeks * 5
+        capacity_hours = len(devs) * sprint_days * 6
+        
+        # 2. Get Backlog Tasks (not in any sprint, not done)
+        query = {"sprint_id": {"$in": [None, ""]}, "status": {"$ne": "done"}}
+        tasks = list(tasks_collection.find(query))
+        
+        if not tasks:
+            return "No tasks in the backlog to plan."
+            
+        def score_task(t):
+            score = 0
+            text = (t.get("name","") + " " + t.get("description","")).lower()
+            if focus_area and focus_area.lower() in text:
+                score += 100
+            return score
+            
+        tasks.sort(key=score_task, reverse=True)
+        
+        # 3. Create Sprint
+        start_date = datetime.now()
+        end_date = start_date + timedelta(days=duration_weeks * 7)
+        
+        sprint_doc = {
+            "name": sprint_name,
+            "goal": f"Focus: {focus_area}" if focus_area else "General Backlog",
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d"),
+            "capacity_hours": capacity_hours,
+            "project_id": "default",
+            "status": "planning",
+            "created_by": username,
+            "created_at": datetime.now()
+        }
+        result = sprints_collection.insert_one(sprint_doc)
+        sprint_id = str(result.inserted_id)
+        
+        # 4. Fill Sprint to capacity
+        assigned_hours = 0
+        assigned_tasks = []
+        for t in tasks:
+            est = t.get("estimated_hours", 0)
+            if est == 0: est = 4 # default to 4 hours if not estimated
+            
+            if assigned_hours + est <= capacity_hours:
+                assigned_hours += est
+                tasks_collection.update_one({"_id": t["_id"]}, {"$set": {"sprint_id": sprint_id}})
+                assigned_tasks.append(t.get("name"))
+                
+        return f"Sprint '{sprint_name}' created successfully! Capacity: {capacity_hours}h. Assigned {len(assigned_tasks)} tasks ({assigned_hours}h estimated). Tasks assigned: {', '.join(assigned_tasks)}"
+    except Exception as e:
+        return f"Error planning sprint: {e}"
 
 # Bind tools
-llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time, send_deadline_alerts])
-
+llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time, send_deadline_alerts, auto_plan_sprint])
 # ==========================================
 # 🧠 MEMORY & PERSISTENCE LAYER
 # ==========================================
@@ -2072,24 +2135,39 @@ def get_dashboard_data(username: str = Depends(get_current_user)):
             except Exception as e:
                 print(f"Workload calc error: {e}")
 
-            # --- TIME TRACKING: Estimated vs Actual ---
-            for fi in finance_items:
-                try:
-                    task_detail = fi.get("details", "")
-                    # Get estimated hours from the description pattern "⏱ Est: X days"
-                    fi["estimated_hours"] = None
-                    fi["actual_hours"] = None
+            # --- TIME TRACKING & NATIVE PROJECT TASKS: Estimated vs Actual ---
+            try:
+                # Add native tasks to finance_items
+                native_tasks = list(tasks_collection.find({}, {"_id": 0}))
+                for t in native_tasks:
+                    est = t.get("estimated_hours", 0)
+                    act = t.get("actual_hours", 0)
                     
-                    # Find matching time logs
-                    if time_logs_collection:
-                        time_entries = list(time_logs_collection.find(
-                            {"task_name": {"$regex": task_detail, "$options": "i"}},
-                            {"hours": 1, "_id": 0}
-                        ))
-                        if time_entries:
-                            fi["actual_hours"] = sum(e.get("hours", 0) for e in time_entries)
-                except:
-                    pass
+                    # If actual_hours is not directly on the task, sum from time_logs
+                    if act == 0 and time_logs_collection:
+                        logs = list(time_logs_collection.find({"task_name": t.get("name")}))
+                        act = sum(l.get("hours", 0) for l in logs)
+                        
+                    # Calculate cost (assuming $50/hr average blend)
+                    est_cost = est * 50
+                    act_cost = act * 50
+                    
+                    # We add this as a finance item
+                    if est > 0 or act > 0:
+                        status = "✅ Under Budget" if act <= est else "⚠️ Over Budget"
+                        finance_items.append({
+                            "date": t.get("due_date", datetime.now().strftime("%b %d")),
+                            "category": "Native Task",
+                            "details": t.get("name", "Unknown Task"),
+                            "amount": f"${act_cost:,.0f} / ${est_cost:,.0f}",
+                            "status": status,
+                            "isPositive": act <= est,
+                            "numeric": act_cost,
+                            "estimated_hours": est,
+                            "actual_hours": act
+                        })
+            except Exception as e:
+                print(f"Native task finance calc error: {e}")
 
             # 🚀 FIND THE USER RECORD USING THE AUTHENTICATED USERNAME
             user_record = users_collection.find_one({"username": username}, {"display_name": 1, "role": 1})
@@ -2577,6 +2655,118 @@ def get_gantt_data(username: str = Depends(get_current_user)):
                 item["is_critical_path"] = True
     
     return {"tasks": gantt_items, "total": len(gantt_items)}
+
+# ==========================================
+# 🏃 SPRINT MANAGEMENT ENDPOINTS
+# ==========================================
+
+@app.post("/sprints")
+def create_sprint(sprint: SprintCreate, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Create a new sprint. PM/Admin only."""
+    doc = {
+        "name": sprint.name,
+        "goal": sprint.goal,
+        "start_date": sprint.start_date,
+        "end_date": sprint.end_date,
+        "capacity_hours": sprint.capacity_hours,
+        "project_id": sprint.project_id,
+        "status": "planning",  # planning, active, completed
+        "created_by": user_info["username"],
+        "created_at": datetime.now()
+    }
+    result = sprints_collection.insert_one(doc)
+    return {"msg": f"Sprint '{sprint.name}' created", "id": str(result.inserted_id)}
+
+@app.get("/sprints")
+def get_sprints(project_id: str = "default", username: str = Depends(get_current_user)):
+    """List all sprints for a project."""
+    all_sprints = []
+    for s in sprints_collection.find({"project_id": project_id}):
+        s["id"] = str(s["_id"])
+        del s["_id"]
+        
+        # Serialize datetime fields
+        if "created_at" in s and hasattr(s["created_at"], "isoformat"):
+            s["created_at"] = s["created_at"].isoformat()
+        
+        # Dynamically calculate sprint metrics
+        tasks_in_sprint = list(tasks_collection.find({"sprint_id": s["id"]}))
+        s["committed_tasks"] = len(tasks_in_sprint)
+        s["committed_hours"] = sum(t.get("estimated_hours", 0) for t in tasks_in_sprint)
+        s["completed_tasks"] = sum(1 for t in tasks_in_sprint if t.get("status") == "done")
+        s["completed_hours"] = sum(t.get("actual_hours", 0) for t in tasks_in_sprint if t.get("status") == "done")
+        
+        all_sprints.append(s)
+        
+    # Sort sprints by start_date
+    all_sprints.sort(key=lambda x: x.get("start_date", ""))
+    return all_sprints
+
+@app.put("/sprints/{sprint_id}")
+def update_sprint(sprint_id: str, sprint: SprintUpdate, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Update a sprint."""
+    update_data = {k: v for k, v in sprint.dict().items() if v is not None}
+    sprints_collection.update_one({"_id": ObjectId(sprint_id)}, {"$set": update_data})
+    return {"msg": "Sprint updated"}
+
+@app.get("/sprints/{sprint_id}/burndown")
+def get_sprint_burndown(sprint_id: str, username: str = Depends(get_current_user)):
+    """Calculate the real burndown chart data for a specific sprint."""
+    sprint = sprints_collection.find_one({"_id": ObjectId(sprint_id)})
+    if not sprint:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+        
+    tasks = list(tasks_collection.find({"sprint_id": sprint_id}))
+    total_estimated = sum(t.get("estimated_hours", 0) for t in tasks)
+    
+    # Generate dates between start and end
+    start_dt = datetime.fromisoformat(sprint["start_date"].replace("Z", ""))
+    end_dt = datetime.fromisoformat(sprint["end_date"].replace("Z", ""))
+    current_dt = start_dt
+    
+    dates = []
+    ideal_line = []
+    actual_line = []
+    
+    total_days = (end_dt - start_dt).days
+    if total_days <= 0: total_days = 1
+    
+    # Get all time logs for tasks in this sprint
+    task_names = [t.get("name") for t in tasks]
+    time_logs = list(time_logs_collection.find({"task_name": {"$in": task_names}}))
+    
+    remaining = total_estimated
+    day_count = 0
+    now_dt = datetime.now()
+    
+    while current_dt <= end_dt:
+        date_str = current_dt.strftime("%Y-%m-%d")
+        dates.append(current_dt.strftime("%b %d"))
+        
+        # Ideal line
+        ideal_val = total_estimated - (total_estimated / total_days) * day_count
+        ideal_line.append(max(0, ideal_val))
+        
+        # Actual line
+        if current_dt.date() <= now_dt.date():
+            # Sum hours logged ON this day for these tasks
+            logs_today = [l for l in time_logs if l["timestamp"].strftime("%Y-%m-%d") == date_str]
+            hours_burned = sum(l.get("hours", 0) for l in logs_today)
+            remaining -= hours_burned
+            actual_line.append(max(0, remaining))
+        else:
+            actual_line.append(None) # Future dates
+            
+        current_dt += timedelta(days=1)
+        day_count += 1
+        
+    return {
+        "sprint_name": sprint["name"],
+        "total_estimated": total_estimated,
+        "labels": dates,
+        "ideal": ideal_line,
+        "actual": actual_line
+    }
 
 @app.get("/")
 def health_check():
