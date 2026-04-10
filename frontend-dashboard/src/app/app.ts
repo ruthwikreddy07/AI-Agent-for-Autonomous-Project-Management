@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
+import { LandingComponent } from './landing/landing';
 import { DashboardComponent } from './dashboard/dashboard'; 
 import { ChatComponent } from './chat/chat'; 
 import { TeamComponent } from './team/team';       
@@ -9,21 +10,20 @@ import { LoginComponent } from './login/login';
 import { BacklogComponent } from './backlog/backlog';
 import { TimelineComponent } from './timeline/timeline';
 import { RiskMatrixComponent } from './risk-matrix/risk-matrix';
-import { LandingComponent } from './landing/landing';
 import { AiService } from './ai.service'; 
 import { ChangeDetectorRef } from '@angular/core';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, DashboardComponent, ChatComponent, TeamComponent, SettingsComponent, LoginComponent, BacklogComponent, TimelineComponent, RiskMatrixComponent, LandingComponent],
+  imports: [CommonModule, LandingComponent, DashboardComponent, ChatComponent, TeamComponent, SettingsComponent, LoginComponent, BacklogComponent, TimelineComponent, RiskMatrixComponent],
   template: `
     <div *ngIf="showLoginModal" class="login-overlay">
       <app-login (loginSuccess)="onLoginSuccess()" (cancel)="showLoginModal = false"></app-login>
     </div>
 
-    <div style="height: 100vh;">
-      
+    <div style="min-height: 100vh; overflow-y: auto;">
+
       <app-landing
         *ngIf="currentView === 'landing'"
         (navigate)="onNavigate($event)">
@@ -92,9 +92,9 @@ export class App {
   onNavigate(view: string) {
     console.log('User clicked:', view);
 
-    // 1. ALLOW Dashboard (Public Preview)
-    if (view === 'dashboard') {
-      this.currentView = 'dashboard';
+    // 1. ALLOW Landing & Dashboard (Public Preview)
+    if (view === 'landing' || view === 'dashboard') {
+      this.currentView = view;
       return;
     }
 
@@ -115,7 +115,7 @@ export class App {
       this.aiService.logout();
       this.isAuthenticated = false;
       this.showLoginModal = true; 
-      this.currentView = 'dashboard';
+      this.currentView = 'landing';
       return;
     }
     // 5. Allow Internal Navigation (including new views)
@@ -137,3 +137,4 @@ export class App {
     this.currentView = view;
   }
 }
+
