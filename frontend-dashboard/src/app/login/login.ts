@@ -15,27 +15,60 @@ export class LoginComponent {
   @Output() loginSuccess = new EventEmitter<void>(); // 🚀 Re-add the emitter
   
   isLogin = true;
+  step = 1; // 1: Core Details, 2: AI Context
+  
+  // Payload Fields
   username = '';
   password = '';
+  full_name = '';
+  profession = 'Software Engineer';
+  project_focus = 'Software Development';
 
-constructor(private aiService: AiService) {}
+  constructor(private aiService: AiService) {}
+
+  nextStep() {
+    if (!this.username || !this.password || !this.full_name) {
+      alert("Please fill out all required fields first.");
+      return;
+    }
+    this.step = 2;
+  }
+
+  prevStep() {
+    this.step = 1;
+  }
+
+  toggleMode() {
+    this.isLogin = !this.isLogin;
+    this.step = 1;
+  }
+
   onSubmit() {
-    if (!this.username || !this.password) return;
-
     if (this.isLogin) {
+      if (!this.username || !this.password) return;
       this.aiService.login(this.username, this.password).subscribe({
         next: () => {
-          this.loginSuccess.emit(); // 🚀 Tell parent to swap to dashboard
+          this.loginSuccess.emit();
         },
         error: () => alert('Invalid Credentials')
       });
     } else {
-      this.aiService.register(this.username, this.password).subscribe({
+      // Registration complete payload
+      const payload = {
+        username: this.username,
+        password: this.password,
+        full_name: this.full_name,
+        email: this.username, // Using username as email conceptually
+        profession: this.profession,
+        project_focus: this.project_focus
+      };
+
+      this.aiService.register(payload).subscribe({
         next: () => {
-          alert('Account created! Please log in.');
-          this.isLogin = true;
+          alert('Workspace Set Up Successfully! Please log in.');
+          this.toggleMode();
         },
-        error: () => alert('Username exists')
+        error: () => alert('Username exists. Please try another.')
       });
     }
   }

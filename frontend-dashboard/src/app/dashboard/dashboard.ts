@@ -50,6 +50,12 @@ stats: any = {
   showProjectModal = false;
   newProject = { name: '', trello_board_url: '', n8n_trello_webhook: '', n8n_get_cards_url: '' };
   
+  // --- Retrospective ---
+  showRetroModal = false;
+  retroReport: string | null = null;
+  isLoadingRetro = false;
+  activeSprintId: string | null = null;
+
   private lineChart!: Chart;
   private donutChart!: Chart;
   private burndownChart!: Chart;
@@ -214,12 +220,35 @@ loadSprint3Data() {
   // Try to load active sprint scope health
   this.aiService.getSprints().subscribe({
     next: (sprints: any[]) => {
-      const active = sprints.find(s => s.status === 'active');
+      const active = sprints.find(s => s.status === 'active') || sprints.find(s => s.status === 'completed');
       if (active) {
+        this.activeSprintId = active.id;
         this.aiService.getSprintScopeHealth(active.id).subscribe({
           next: (data) => this.scopeHealth = data
         });
       }
+    }
+  });
+}
+
+generateRetrospective() {
+  if (!this.activeSprintId) {
+    alert("No sprint found to generate a retrospective for.");
+    return;
+  }
+  
+  this.showRetroModal = true;
+  this.isLoadingRetro = true;
+  this.retroReport = null;
+  
+  this.aiService.getSprintRetrospective(this.activeSprintId).subscribe({
+    next: (data: any) => {
+      this.retroReport = data.report || "No report generated.";
+      this.isLoadingRetro = false;
+    },
+    error: (err: any) => {
+      this.retroReport = "Error generating retrospective.";
+      this.isLoadingRetro = false;
     }
   });
 }

@@ -38,6 +38,41 @@
           <span class="val">${{ emp.rate }}/hr</span>
         </div>
       </div>
+
+      <!-- AI Insights Panel -->
+      <div class="ai-insights" *ngIf="getHealthFor(emp.name) as health">
+        <div class="insight-header">
+          <span class="magic-sparkle">✨</span> AI Insights
+        </div>
+        
+        <div class="insight-row">
+          <span class="label">Mood</span>
+          <span class="val" [ngClass]="{
+            'good': health.avg_mood >= 4,
+            'warn': health.avg_mood < 4 && health.avg_mood >= 3,
+            'bad': health.avg_mood < 3
+          }">
+            {{ health.avg_mood ? (health.avg_mood | number:'1.1-1') + '/5' : 'No Data' }}
+          </span>
+        </div>
+
+        <div class="insight-row">
+          <span class="label">Overdue</span>
+          <span class="val" [ngClass]="{'bad': health.overdue_tasks > 0}">{{ health.overdue_tasks }} tasks</span>
+        </div>
+        
+        <div class="insight-row" *ngIf="getCommitsFor(emp.name) as commits">
+          <span class="label">7d Commits</span>
+          <span class="val">{{ commits.commits }} (+{{ commits.lines_added }} / -{{ commits.lines_removed }} lines)</span>
+        </div>
+        
+        <div class="status-warning" *ngIf="health.status === 'at_risk'">
+           ⚠️ At risk of burnout
+        </div>
+        <div class="status-warning" *ngIf="health.status === 'overloaded'" style="background: rgba(255, 206, 115, 0.1); color: #FFCE73;">
+           ⚠️ Overloaded with tasks
+        </div>
+      </div>
     </div>
   </div>
 </div>

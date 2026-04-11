@@ -16,23 +16,83 @@
     <h2>{{ isLogin ? 'Welcome back' : 'Create account' }}</h2>
     <span class="sub-text">{{ isLogin ? 'Please enter your details.' : 'Start your 14-day free trial.' }}</span>
 
-    <div class="field">
-      <span class="label">Username</span>
-      <input class="input" [(ngModel)]="username" placeholder="Enter your username">
+    <!-- ======================= -->
+    <!-- LOGIN MODE -->
+    <!-- ======================= -->
+    <div *ngIf="isLogin" class="step-container fade-in">
+      <div class="field">
+        <span class="label">Work Email</span>
+        <input class="input" [(ngModel)]="username" placeholder="name@company.com">
+      </div>
+
+      <div class="field">
+        <span class="label">Password</span>
+        <input class="input" type="password" [(ngModel)]="password" placeholder="••••••••">
+      </div>
+
+      <button class="btn-primary" (click)="onSubmit()">Sign In</button>
     </div>
 
-    <div class="field">
-      <span class="label">Password</span>
-      <input class="input" type="password" [(ngModel)]="password" placeholder="••••••••">
+    <!-- ======================= -->
+    <!-- SIGN UP MODE - STEP 1 -->
+    <!-- ======================= -->
+    <div *ngIf="!isLogin && step === 1" class="step-container slide-in">
+      <div class="field">
+        <span class="label">Full Name</span>
+        <input class="input" [(ngModel)]="full_name" placeholder="John Doe">
+      </div>
+
+      <div class="field">
+        <span class="label">Work Email</span>
+        <input class="input" [(ngModel)]="username" placeholder="name@company.com">
+      </div>
+
+      <div class="field">
+        <span class="label">Password</span>
+        <input class="input" type="password" [(ngModel)]="password" placeholder="••••••••">
+      </div>
+
+      <button class="btn-primary" (click)="nextStep()">Continue &rarr;</button>
     </div>
 
-    <button class="btn-primary" (click)="onSubmit()">
-      {{ isLogin ? 'Sign In' : 'Sign Up' }}
-    </button>
+    <!-- ======================= -->
+    <!-- SIGN UP MODE - STEP 2 -->
+    <!-- ======================= -->
+    <div *ngIf="!isLogin && step === 2" class="step-container slide-in">
+      <div class="field">
+        <span class="label">What is your profession?</span>
+        <select class="input" [(ngModel)]="profession">
+          <option value="Software Engineer">Software Engineer</option>
+          <option value="Product Manager">Product Manager</option>
+          <option value="Designer">Designer</option>
+          <option value="Scrum Master">Scrum Master</option>
+          <option value="Executive">Executive</option>
+          <option value="QA">QA</option>
+        </select>
+        <div style="font-size: 11px; color:#94a3b8; margin-top:6px;">This helps the AI tune its language to your expertise.</div>
+      </div>
 
-    <div class="toggle-link">
+      <div class="field">
+        <span class="label">What are you managing?</span>
+        <select class="input" [(ngModel)]="project_focus">
+          <option value="Software Development">Software Development</option>
+          <option value="Marketing Campaigns">Marketing Campaigns</option>
+          <option value="Product Launch">Product Launch</option>
+          <option value="IT Operations">IT Operations</option>
+          <option value="General Management">General Management</option>
+        </select>
+        <div style="font-size: 11px; color:#94a3b8; margin-top:6px;">Sets up your workspace default metrics.</div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button class="btn-outline" (click)="prevStep()" style="flex:1;">&larr; Back</button>
+        <button class="btn-primary" (click)="onSubmit()" style="flex:2;">Complete Setup</button>
+      </div>
+    </div>
+
+    <div class="toggle-link" *ngIf="step === 1">
       {{ isLogin ? "Don't have an account?" : "Already have an account?" }}
-      <span class="link" (click)="isLogin = !isLogin">
+      <span class="link" (click)="toggleMode()">
         {{ isLogin ? 'Sign up' : 'Log in' }}
       </span>
     </div>

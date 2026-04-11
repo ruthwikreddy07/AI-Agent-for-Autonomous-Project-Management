@@ -18,12 +18,46 @@ export class TeamComponent implements OnInit {
   
   
   employees: any[] = [];
+  teamHealth: any[] = [];
+  commitStats: any = {};
   showModal = false;
-  isEditing = false; // 🚀 Track if we are editing or adding
+  isEditing = false;
   newEmp = { name: '', role: '', skills: '', email: '', rate: 50 };
 
+  ngOnInit() { 
+    this.loadEmployees(); 
+    this.loadTeamHealth();
+    this.loadCommitStats();
+  }
 
-  ngOnInit() { this.loadEmployees(); }
+  loadTeamHealth() {
+    this.aiService.getTeamHealth().subscribe((data: any) => {
+      this.teamHealth = data.team || [];
+    });
+  }
+
+  loadCommitStats() {
+    this.aiService.getCommitAnalysis(7).subscribe((data: any) => {
+      this.commitStats = data.author_stats || {};
+    });
+  }
+
+  // Find health data for a specific employee
+  getHealthFor(name: string) {
+    return this.teamHealth.find(t => t.name.toLowerCase() === name.toLowerCase());
+  }
+
+  // Find commit stats for a specific employee
+  getCommitsFor(name: string) {
+    // Basic matching, could be refined based on GitHub vs internal names
+    const searchName = name.split(' ')[0].toLowerCase();
+    for (const author in this.commitStats) {
+      if (author.toLowerCase().includes(searchName)) {
+        return this.commitStats[author];
+      }
+    }
+    return null;
+  }
 
   loadEmployees() {
     this.aiService.getEmployees().subscribe((data: any) => this.employees = data);

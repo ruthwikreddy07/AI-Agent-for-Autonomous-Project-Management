@@ -55,8 +55,30 @@ h2 { font-size: 32px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
 }
 .btn-primary:hover { background: #5b4eb3; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(108, 93, 211, 0.2); }
 
+.btn-outline {
+  width: 100%; background: transparent; color: #1e293b; border: 1px solid #e2e8f0; padding: 16px; 
+  border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; transition: 0.2s;
+  margin-top: 10px;
+}
+.btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+
 .toggle-link {
   margin-top: 30px; text-align: center; color: #64748b; font-size: 14px;
 }
 .link { color: #6C5DD3; font-weight: 700; cursor: pointer; text-decoration: none; }
 .link:hover { text-decoration: underline; }
+
+/* Animations */
+.step-container { animation-duration: 0.4s; animation-fill-mode: both; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in { animation-name: fadeIn; }
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.slide-in { animation-name: slideInRight; }

@@ -72,9 +72,9 @@ export class AiService {
     );
   }
 
-  register(username: string, password: string): Observable<any> {
-    if (this.USE_MOCK) return this.login(username, password);
-    return this.http.post(`${this.apiUrl}/register`, { username, password });
+  register(payload: any): Observable<any> {
+    if (this.USE_MOCK) return this.login(payload.username, payload.password);
+    return this.http.post(`${this.apiUrl}/register`, payload);
   }
 
   logout() {
@@ -335,6 +335,40 @@ export class AiService {
   getGanttData(): Observable<any> {
     if (this.USE_MOCK) return of({ tasks: [], total: 0 }).pipe(delay(300));
     return this.http.get<any>(`${this.apiUrl}/gantt-data`, this.getAuthOptions());
+  }
+
+  // ==========================================
+  // 📋 SPRINT RETROSPECTIVE
+  // ==========================================
+  getSprintRetrospective(sprintId: string): Observable<any> {
+    if (this.USE_MOCK) return of({ report: '# Mock Retrospective\nNo data.' }).pipe(delay(300));
+    return this.http.post<any>(`${this.apiUrl}/sprints/${sprintId}/retrospective`, {}, this.getAuthOptions());
+  }
+
+  // ==========================================
+  // 🧠 TEAM HEALTH & MOOD INTELLIGENCE
+  // ==========================================
+  getTeamHealth(): Observable<any> {
+    if (this.USE_MOCK) return of({ team: [] }).pipe(delay(300));
+    return this.http.get<any>(`${this.apiUrl}/team-health`, this.getAuthOptions());
+  }
+
+  getMoodHistory(username?: string): Observable<any[]> {
+    if (this.USE_MOCK) return of([]).pipe(delay(300));
+    const url = username ? `${this.apiUrl}/mood-history?username=${username}` : `${this.apiUrl}/mood-history`;
+    return this.http.get<any[]>(url, this.getAuthOptions());
+  }
+
+  submitMood(username: string, score: number, note: string = ''): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/webhook/slack-mood`, { username, score, note });
+  }
+
+  // ==========================================
+  // 🔗 COMMIT-TO-COST ANALYZER
+  // ==========================================
+  getCommitAnalysis(days: number = 7): Observable<any> {
+    if (this.USE_MOCK) return of({ commits: [], author_stats: {}, period_days: 7 }).pipe(delay(300));
+    return this.http.get<any>(`${this.apiUrl}/commit-analysis?days=${days}`, this.getAuthOptions());
   }
 
   // ==========================================

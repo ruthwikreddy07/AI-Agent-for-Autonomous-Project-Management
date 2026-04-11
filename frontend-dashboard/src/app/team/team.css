@@ -81,10 +81,51 @@ h2 { margin: 0 0 8px 0; color: #11142D; font-size: 28px; font-weight: 700; }
 }
 
 /* Stats Row */
-.stats { display: flex; gap: 15px; border-top: 1px solid #F0F0F0; padding-top: 16px; }
+.stats { display: flex; gap: 15px; border-top: 1px solid #F0F0F0; padding-top: 16px; margin-bottom: 16px; }
 .stat-item { display: flex; flex-direction: column; }
 .label { font-size: 11px; color: #808191; font-weight: 600; text-transform: uppercase; }
 .val { font-size: 14px; color: #11142D; font-weight: 700; }
+
+/* AI Insights Panel */
+.ai-insights {
+  padding-top: 16px;
+  border-top: 1px dashed #E4E4E6;
+}
+
+.insight-header {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6C5DD3;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.insight-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.insight-row .label { color: #808191; font-weight: 500;}
+.insight-row .val { color: #11142D; font-weight: 600; }
+
+.insight-row .val.good { color: #7FBA7A; }
+.insight-row .val.warn { color: #FFCE73; }
+.insight-row .val.bad { color: #FF754C; }
+
+.status-warning {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 117, 76, 0.1);
+  color: #FF754C;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
 
 /* Modal & Overlay */
 .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 100; }

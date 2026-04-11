@@ -199,7 +199,15 @@ next: (res: any) => {
         error: () => alert('❌ Invalid Credentials!')
       });
     } else {
-      this.aiService.register(this.loginData.username, this.loginData.password).subscribe({
+      const payload = {
+        username: this.loginData.username,
+        password: this.loginData.password,
+        full_name: this.loginData.username,
+        email: this.loginData.username,
+        profession: 'Software Engineer',
+        project_focus: 'Software Development'
+      };
+      this.aiService.register(payload).subscribe({
         next: () => { alert('✅ Account Created!'); this.isLoginMode = true; },
         error: (err: any) => { if (err.status === 400) alert('⚠️ Username already exists.'); } 
       });

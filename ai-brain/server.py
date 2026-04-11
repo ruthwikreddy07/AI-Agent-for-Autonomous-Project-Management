@@ -158,6 +158,8 @@ tasks_collection = None
 sprints_collection = None
 meetings_collection = None
 risks_collection = None
+mood_collection = None
+commit_logs_collection = None
 try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client["ai_project_manager"]
@@ -172,10 +174,12 @@ try:
     sprints_collection = db["sprints"]
     meetings_collection = db["meetings"]
     risks_collection = db["risks"]
+    mood_collection = db["mood_entries"]
+    commit_logs_collection = db["commit_logs"]
     client.admin.command("ping")
-    print("✅ Connected to MongoDB")
+    print("[OK] Connected to MongoDB")
 except Exception as e:
-    print("❌ MongoDB Error:", e)
+    print("[ERROR] MongoDB Error:", e)
 
 # --------------------
 # SECURITY & MODELS
@@ -655,6 +659,22 @@ You are an Intelligent AI Project Manager.
     - Scope Creep AI. Use when user asks about sprint health, capacity, or if the current sprint is overloaded.
     - Analyzes utilization % and identifies lower-priority tasks to defer if > 110%.
 
+1️⃣3️⃣  **generate_sprint_retrospective**
+    - Generates a full sprint retrospective report automatically.
+    - Compares actual vs estimated hours, identifies what went well and what went wrong.
+    - Posts the report to Slack and saves to project memory.
+    - Trigger words: "retrospective", "retro", "sprint review", "sprint summary", "what happened in the sprint".
+
+1️⃣4️⃣  **analyze_team_health**
+    - Analyzes team health by correlating mood scores with sprint velocity and task load.
+    - Flags team members who may be blocked or burned out.
+    - Trigger words: "team health", "morale", "mood", "burnout", "team status".
+
+1️⃣5️⃣  **analyze_commit_cost**
+    - Compares developer commit activity (lines changed) against hours logged.
+    - Flags low-output patterns (high hours, few code changes).
+    - Trigger words: "commit analysis", "code output", "developer productivity", "commit efficiency".
+
 ===========================
 📌  CRITICAL DECISION RULES
 ===========================
@@ -1010,13 +1030,17 @@ def execute_project_plan(goal: str, tasks: str | list, budget: float = 0, userna
             
             desc = f"{desc}\n\n{cost_details}\n⏱ Est: {days} days @ ${emp_rate}/hr"
             
-            # ✅ THE FIX: Save the calculated dates into the pending plan
+            # ✅ Save the calculated dates + hierarchy info into the pending plan
             clean_tasks.append({
                 "name": name, 
                 "desc": desc, 
                 "owner": owner,
                 "due_date": t.get("due_date"), 
-                "start_date": t.get("start_date")
+                "start_date": t.get("start_date"),
+                "estimated_hours": days * 8,
+                "epic": t.get("epic") or t.get("epic_name") or goal,
+                "story": t.get("story") or t.get("story_name") or "",
+                "depends_on": t.get("depends_on", [])
             })
         # --- RISK ANALYSIS ---
         # Default styling (No budget limit set)
@@ -1457,16 +1481,41 @@ def send_deadline_alerts(days_ahead: int = 2):
 def auto_plan_sprint(sprint_name: str, duration_weeks: int = 2, focus_area: str = "", username: str = "default"):
     """
     Intelligently reads the project backlog and plans a new sprint based on team capacity.
+    Uses historical velocity data from past sprints for accurate capacity prediction.
     Provides an optional focus_area (e.g. 'checkout', 'security') to prioritize related tasks.
     """
     try:
         # 1. Calculate Capacity
         devs = list(employees_collection.find())
-        # Assume 6 productive hours / day / dev. 5 days a week.
         sprint_days = duration_weeks * 5
-        capacity_hours = len(devs) * sprint_days * 6
+        raw_capacity = len(devs) * sprint_days * 6  # 6 productive hours/day/dev
+
+        # 2. Historical Velocity Prediction
+        velocity_msg = ""
+        try:
+            completed_sprints = list(sprints_collection.find({"status": "completed"}).sort("created_at", -1).limit(5))
+            if completed_sprints:
+                velocities = []
+                for cs in completed_sprints:
+                    cs_id = str(cs["_id"])
+                    cs_tasks = list(tasks_collection.find({"sprint_id": cs_id, "status": "done"}))
+                    completed_hours = sum(t.get("actual_hours", t.get("estimated_hours", 0)) for t in cs_tasks)
+                    cs_days = max(1, (datetime.fromisoformat(cs["end_date"].replace("Z","")) - datetime.fromisoformat(cs["start_date"].replace("Z",""))).days)
+                    velocities.append(completed_hours / cs_days)
+                
+                avg_velocity = sum(velocities) / len(velocities)  # hours/day historically
+                predicted_capacity = avg_velocity * sprint_days
+                # Blend: use the lower of raw capacity vs historical prediction (conservative)
+                capacity_hours = min(raw_capacity, predicted_capacity * 1.1)
+                velocity_msg = f"📈 Historical velocity: {avg_velocity:.1f}h/day (from {len(velocities)} sprints). Adjusted capacity from {raw_capacity}h → {capacity_hours:.0f}h."
+            else:
+                capacity_hours = raw_capacity
+                velocity_msg = "📊 No past sprint data — using raw capacity estimate."
+        except Exception:
+            capacity_hours = raw_capacity
+            velocity_msg = "📊 Using raw capacity estimate."
         
-        # 2. Get Backlog Tasks (not in any sprint, not done)
+        # 3. Get Backlog Tasks (not in any sprint, not done)
         query = {"sprint_id": {"$in": [None, ""]}, "status": {"$ne": "done"}}
         tasks = list(tasks_collection.find(query))
         
@@ -1478,11 +1527,15 @@ def auto_plan_sprint(sprint_name: str, duration_weeks: int = 2, focus_area: str 
             text = (t.get("name","") + " " + t.get("description","")).lower()
             if focus_area and focus_area.lower() in text:
                 score += 100
+            # Prioritize tasks with dependencies already done
+            deps = t.get("depends_on", [])
+            if not deps:
+                score += 10
             return score
             
         tasks.sort(key=score_task, reverse=True)
         
-        # 3. Create Sprint
+        # 4. Create Sprint
         start_date = datetime.now()
         end_date = start_date + timedelta(days=duration_weeks * 7)
         
@@ -1500,19 +1553,35 @@ def auto_plan_sprint(sprint_name: str, duration_weeks: int = 2, focus_area: str 
         result = sprints_collection.insert_one(sprint_doc)
         sprint_id = str(result.inserted_id)
         
-        # 4. Fill Sprint to capacity
+        # 5. Fill Sprint to capacity
         assigned_hours = 0
         assigned_tasks = []
         for t in tasks:
             est = t.get("estimated_hours", 0)
-            if est == 0: est = 4 # default to 4 hours if not estimated
+            if est == 0: est = 4
             
             if assigned_hours + est <= capacity_hours:
                 assigned_hours += est
                 tasks_collection.update_one({"_id": t["_id"]}, {"$set": {"sprint_id": sprint_id}})
                 assigned_tasks.append(t.get("name"))
+        
+        # 6. Send Slack Notification
+        summary_msg = f"🏃 **Sprint '{sprint_name}' is locked!**\n\n"
+        summary_msg += f"{velocity_msg}\n"
+        summary_msg += f"📦 Capacity: {capacity_hours:.0f}h | Assigned: {assigned_hours:.0f}h ({len(assigned_tasks)} tasks)\n"
+        summary_msg += f"📅 {start_date.strftime('%b %d')} → {end_date.strftime('%b %d')}\n\n"
+        summary_msg += "**Tasks:**\n"
+        for tn in assigned_tasks[:15]:
+            summary_msg += f"  • {tn}\n"
+        if len(assigned_tasks) > 15:
+            summary_msg += f"  ... and {len(assigned_tasks) - 15} more\n"
+
+        try:
+            send_slack_announcement.invoke({"message": summary_msg})
+        except Exception as slack_err:
+            print(f"⚠️ Slack notification failed: {slack_err}")
                 
-        return f"Sprint '{sprint_name}' created successfully! Capacity: {capacity_hours}h. Assigned {len(assigned_tasks)} tasks ({assigned_hours}h estimated). Tasks assigned: {', '.join(assigned_tasks)}"
+        return f"Sprint '{sprint_name}' created! {velocity_msg} Capacity: {capacity_hours:.0f}h. Assigned {len(assigned_tasks)} tasks ({assigned_hours:.0f}h). Team notified via Slack."
     except Exception as e:
         return f"Error planning sprint: {e}"
 
@@ -1700,8 +1769,286 @@ def detect_scope_creep(sprint_id: str = ""):
     except Exception as e:
         return f"Error checking scope: {e}"
 
-# Bind tools
-llm_with_tools = llm.bind_tools([create_task_in_trello, send_slack_announcement, consult_project_memory, execute_project_plan, check_project_status, schedule_meeting_tool, heal_project_schedule, check_team_workload, log_time, send_deadline_alerts, auto_plan_sprint, predict_risks, detect_scope_creep])
+# ==========================================
+# 🌟 FEATURE 3: AI RETROSPECTIVE REPORT GENERATOR
+# ==========================================
+@tool
+def generate_sprint_retrospective(sprint_id: str = ""):
+    """
+    Generates a full sprint retrospective report automatically.
+    Compares actual vs estimated hours, identifies what went well and what went wrong.
+    Drafts a Markdown report and posts it to Slack.
+    Use when user asks for a retrospective, sprint review, or sprint summary.
+    """
+    try:
+        # Find sprint
+        if sprint_id:
+            sprint = sprints_collection.find_one({"_id": ObjectId(sprint_id)})
+        else:
+            # Find the most recently completed sprint, or the active one
+            sprint = sprints_collection.find_one({"status": "completed"}, sort=[("created_at", -1)])
+            if not sprint:
+                sprint = sprints_collection.find_one({"status": "active"}, sort=[("created_at", -1)])
+
+        if not sprint:
+            return "No sprint found for retrospective. Create or complete a sprint first."
+
+        sid = str(sprint["_id"])
+        sprint_name = sprint.get("name", "Unnamed Sprint")
+        
+        # Get ALL tasks for this sprint
+        sprint_tasks = list(tasks_collection.find({"sprint_id": sid}))
+        if not sprint_tasks:
+            return f"Sprint '{sprint_name}' has no tasks. Nothing to report."
+
+        done_tasks = [t for t in sprint_tasks if t.get("status") == "done"]
+        in_progress = [t for t in sprint_tasks if t.get("status") == "in_progress"]
+        todo_tasks = [t for t in sprint_tasks if t.get("status") == "todo"]
+
+        total_estimated = sum(t.get("estimated_hours", 0) for t in sprint_tasks)
+        total_actual = sum(t.get("actual_hours", 0) for t in done_tasks)
+
+        # Cross-reference with time_logs for more accurate actuals
+        task_names = [t.get("name") for t in sprint_tasks]
+        time_logs = list(time_logs_collection.find({"task_name": {"$in": task_names}}))
+        logged_hours = sum(l.get("hours", 0) for l in time_logs)
+        if logged_hours > total_actual:
+            total_actual = logged_hours
+
+        # Identify what went well (done early) and what went wrong (overdue/incomplete)
+        went_well = []
+        went_wrong = []
+        for t in done_tasks:
+            est = t.get("estimated_hours", 0)
+            act = t.get("actual_hours", est)
+            if act <= est * 0.8:
+                went_well.append(f"✅ {t.get('name')} — completed {((est - act)/max(est,1))*100:.0f}% under estimate")
+            elif act > est * 1.2:
+                went_wrong.append(f"⚠️ {t.get('name')} — took {((act - est)/max(est,1))*100:.0f}% longer than estimated")
+
+        for t in in_progress + todo_tasks:
+            went_wrong.append(f"🔴 {t.get('name')} — not completed (status: {t.get('status')})")
+
+        # Build report
+        completion_rate = (len(done_tasks) / max(len(sprint_tasks), 1)) * 100
+        
+        report = f"# 📋 Sprint Retrospective — {sprint_name}\n\n"
+        report += f"**Period:** {sprint.get('start_date', '?')} → {sprint.get('end_date', '?')}\n"
+        report += f"**Goal:** {sprint.get('goal', 'N/A')}\n\n"
+        report += f"## 📊 Key Metrics\n"
+        report += f"| Metric | Value |\n|---|---|\n"
+        report += f"| Tasks Completed | {len(done_tasks)}/{len(sprint_tasks)} ({completion_rate:.0f}%) |\n"
+        report += f"| Estimated Hours | {total_estimated:.0f}h |\n"
+        report += f"| Actual Hours | {total_actual:.0f}h |\n"
+        report += f"| Efficiency | {'🟢 Under' if total_actual <= total_estimated else '🔴 Over'} by {abs(total_estimated - total_actual):.0f}h |\n\n"
+
+        if went_well:
+            report += f"## ✅ What Went Well\n"
+            for item in went_well:
+                report += f"- {item}\n"
+            report += "\n"
+        
+        if went_wrong:
+            report += f"## ❌ What Needs Improvement\n"
+            for item in went_wrong:
+                report += f"- {item}\n"
+            report += "\n"
+
+        report += f"## 💡 Recommendations\n"
+        if completion_rate < 70:
+            report += f"- Consider reducing sprint scope. Only {completion_rate:.0f}% of tasks completed.\n"
+        if total_actual > total_estimated * 1.3:
+            report += f"- Estimates may be too optimistic. Consider buffer time.\n"
+        if len(went_well) > len(went_wrong):
+            report += f"- Great sprint! Team velocity is healthy.\n"
+        
+        report += f"\n---\n*Generated automatically by AI Project Manager*"
+
+        # Save to Pinecone for future velocity reference
+        try:
+            embedding = generate_embedding(report[:1000])
+            memory_index.upsert(vectors=[{
+                "id": f"retro_{sid}",
+                "values": embedding,
+                "metadata": {"text": report[:1000], "source": f"retrospective_{sprint_name}", "type": "retrospective"}
+            }])
+        except Exception as mem_err:
+            print(f"⚠️ Memory save failed: {mem_err}")
+
+        # Post to Slack
+        try:
+            slack_summary = f"📋 **Sprint Retrospective: {sprint_name}**\n"
+            slack_summary += f"✅ {len(done_tasks)}/{len(sprint_tasks)} tasks done ({completion_rate:.0f}%)\n"
+            slack_summary += f"⏱ {total_actual:.0f}h actual vs {total_estimated:.0f}h estimated\n"
+            if went_wrong:
+                slack_summary += f"⚠️ {len(went_wrong)} items need attention"
+            send_slack_announcement.invoke({"message": slack_summary})
+        except Exception:
+            pass
+
+        return report
+
+    except Exception as e:
+        return f"Error generating retrospective: {e}"
+
+# ==========================================
+# 🌟 FEATURE 4: TEAM MOOD & VELOCITY INTELLIGENCE
+# ==========================================
+@tool
+def analyze_team_health(dummy: str = ""):
+    """
+    Analyzes team health by correlating mood scores with sprint velocity data.
+    Flags team members who may be blocked or burned out.
+    Use when user asks about team health, morale, mood, or burnout.
+    """
+    try:
+        # 1. Get recent mood entries (last 4 weeks)
+        four_weeks_ago = (datetime.now() - timedelta(weeks=4)).strftime("%Y-%m-%d")
+        mood_entries = list(mood_collection.find({"timestamp": {"$gte": four_weeks_ago}}).sort("timestamp", -1))
+        
+        # 2. Get all employees
+        employees = list(employees_collection.find({}, {"_id": 0}))
+        
+        # 3. Get active tasks per person
+        active_tasks = list(tasks_collection.find({"status": {"$ne": "done"}}))
+        
+        report = "# 🧠 Team Health Report\n\n"
+        alerts = []
+        
+        for emp in employees:
+            emp_name = emp.get("name", "Unknown")
+            
+            # Mood data
+            emp_moods = [m for m in mood_entries if m.get("username", "").lower() == emp_name.lower()]
+            avg_mood = sum(m.get("score", 3) for m in emp_moods) / max(len(emp_moods), 1) if emp_moods else None
+            
+            # Task load
+            emp_tasks = [t for t in active_tasks if t.get("assigned_to", "").lower() == emp_name.lower()]
+            overdue_tasks = []
+            for t in emp_tasks:
+                due = t.get("due_date")
+                if due:
+                    try:
+                        due_dt = datetime.strptime(due, "%Y-%m-%d") if isinstance(due, str) else due
+                        if due_dt < datetime.now():
+                            overdue_tasks.append(t.get("name"))
+                    except:
+                        pass
+            
+            # Build per-person report
+            mood_str = f"{avg_mood:.1f}/5" if avg_mood else "No data"
+            mood_emoji = "🟢" if (avg_mood and avg_mood >= 4) else "🟡" if (avg_mood and avg_mood >= 3) else "🔴" if avg_mood else "⚪"
+            
+            report += f"### {mood_emoji} {emp_name}\n"
+            report += f"- **Mood:** {mood_str} | **Active Tasks:** {len(emp_tasks)} | **Overdue:** {len(overdue_tasks)}\n"
+            
+            # Flag at-risk team members
+            if avg_mood and avg_mood < 3 and len(overdue_tasks) > 0:
+                alert = f"⚠️ **{emp_name}** may be blocked or burned out (mood: {avg_mood:.1f}, {len(overdue_tasks)} overdue tasks). Consider reassigning work."
+                alerts.append(alert)
+                report += f"- {alert}\n"
+            elif len(emp_tasks) > 5:
+                alert = f"🟠 **{emp_name}** has a heavy workload ({len(emp_tasks)} active tasks)."
+                alerts.append(alert)
+                report += f"- {alert}\n"
+            
+            report += "\n"
+        
+        if not employees:
+            return "No team members found. Add employees first."
+        
+        if alerts:
+            report += "## 🚨 Action Items\n"
+            for a in alerts:
+                report += f"- {a}\n"
+        else:
+            report += "## ✅ Team Status: Healthy\nNo urgent team health concerns detected.\n"
+        
+        return report
+
+    except Exception as e:
+        return f"Error analyzing team health: {e}"
+
+# ==========================================
+# 🌟 FEATURE 5: COMMIT-TO-COST ANALYZER (Tool)
+# ==========================================
+@tool
+def analyze_commit_cost(developer_name: str = "", days_back: int = 7):
+    """
+    Analyzes developer productivity by comparing commit activity (lines changed) against time logged.
+    Flags low-output patterns where high hours are logged but few code changes are made.
+    Use when user asks about developer productivity, commit efficiency, or code output.
+    """
+    try:
+        cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        
+        # Get commits
+        query = {"timestamp": {"$gte": cutoff}}
+        if developer_name:
+            query["author"] = {"$regex": developer_name, "$options": "i"}
+        
+        commits = list(commit_logs_collection.find(query).sort("timestamp", -1))
+        
+        if not commits:
+            return f"No commit data found in the last {days_back} days. Ensure the GitHub webhook is configured."
+
+        # Group by author
+        author_stats = {}
+        for c in commits:
+            author = c.get("author", "Unknown")
+            if author not in author_stats:
+                author_stats[author] = {"commits": 0, "lines_added": 0, "lines_removed": 0, "files_changed": 0}
+            author_stats[author]["commits"] += 1
+            author_stats[author]["lines_added"] += c.get("lines_added", 0)
+            author_stats[author]["lines_removed"] += c.get("lines_removed", 0)
+            author_stats[author]["files_changed"] += c.get("files_changed", 0)
+
+        # Cross-reference with time logs
+        report = f"# 🔗 Commit-to-Cost Analysis (Last {days_back} days)\n\n"
+        report += "| Developer | Commits | Lines Changed | Hours Logged | Output Ratio |\n"
+        report += "|---|---|---|---|---|\n"
+        
+        alerts = []
+        for author, stats in author_stats.items():
+            total_lines = stats["lines_added"] + stats["lines_removed"]
+            
+            # Find time logged by this developer
+            time_logs = list(time_logs_collection.find({
+                "logged_by": {"$regex": author, "$options": "i"},
+                "timestamp": {"$gte": datetime.strptime(cutoff, "%Y-%m-%d")}
+            }))
+            hours_logged = sum(l.get("hours", 0) for l in time_logs)
+            
+            # Calculate output ratio (lines per hour)
+            ratio = total_lines / max(hours_logged, 1) if hours_logged > 0 else 0
+            ratio_indicator = "🟢" if ratio > 20 else "🟡" if ratio > 5 else "🔴"
+            
+            report += f"| {author} | {stats['commits']} | {total_lines} | {hours_logged:.1f}h | {ratio_indicator} {ratio:.0f} lines/hr |\n"
+            
+            # Flag low output
+            if hours_logged > 8 and total_lines < 25:
+                alerts.append(f"🔴 **{author}** logged {hours_logged:.0f}h but only changed {total_lines} lines. Tasks may need to be broken down further.")
+        
+        if alerts:
+            report += "\n## ⚠️ Low Output Patterns Detected\n"
+            for a in alerts:
+                report += f"- {a}\n"
+        
+        return report
+
+    except Exception as e:
+        return f"Error analyzing commits: {e}"
+
+# ==========================================
+# 🔧 BIND ALL TOOLS TO LLM
+# ==========================================
+llm_with_tools = llm.bind_tools([
+    create_task_in_trello, send_slack_announcement, consult_project_memory, 
+    execute_project_plan, check_project_status, schedule_meeting_tool, 
+    heal_project_schedule, check_team_workload, log_time, send_deadline_alerts, 
+    auto_plan_sprint, predict_risks, detect_scope_creep,
+    generate_sprint_retrospective, analyze_team_health, analyze_commit_cost
+])
 # ==========================================
 # 🧠 MEMORY & PERSISTENCE LAYER
 # ==========================================
@@ -1844,6 +2191,12 @@ def process_tool_calls(response, context_messages,username):
                 tool_result = predict_risks.invoke(args)
             elif fn == "detect_scope_creep":
                 tool_result = detect_scope_creep.invoke(args)
+            elif fn == "generate_sprint_retrospective":
+                tool_result = generate_sprint_retrospective.invoke(args)
+            elif fn == "analyze_team_health":
+                tool_result = analyze_team_health.invoke(args)
+            elif fn == "analyze_commit_cost":
+                tool_result = analyze_commit_cost.invoke(args)
             elif fn == "consult_project_memory":
                 # ✅ INJECT USERNAME (AI doesn't provide this, we do)
                 args["username"] = username 
@@ -2000,17 +2353,32 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 async def register(user: User):
     if users_collection.find_one({"username": user.username}):
         raise HTTPException(status_code=400, detail="Exists")
+    
+    # Auto-map profession to role if applicable
+    mapped_role = user.role
+    if user.profession in ["Project Manager", "Executive", "Scrum Master"]:
+        mapped_role = "pm"
+    elif user.profession in ["Software Engineer", "Designer", "QA"]:
+        mapped_role = "developer"
+
     # First user auto-becomes admin
     total_users = users_collection.count_documents({})
-    role = "admin" if total_users == 0 else user.role
-    if role not in VALID_ROLES:
-        role = "developer"
+    if total_users == 0:
+        mapped_role = "admin"
+        
+    if mapped_role not in VALID_ROLES:
+        mapped_role = "developer"
+        
     users_collection.insert_one({
         "username": user.username,
         "password": pwd_context.hash(user.password),
-        "role": role
+        "role": mapped_role,
+        "display_name": user.full_name or user.username,
+        "email": user.email or user.username,
+        "profession": user.profession,
+        "project_focus": user.project_focus
     })
-    return {"msg": f"Created with role: {role}"}
+    return {"msg": f"Created with role: {mapped_role}"}
 
 @app.post("/employees")
 def add_employee(emp: Employee, user_info: dict = Depends(require_role("admin", "pm"))):
@@ -2067,6 +2435,73 @@ def approve_plan(req: ApproveRequest, user_info: dict = Depends(require_role("ad
         return {"status": "No plan."}
     results = []
     current_hour = 9
+
+    # ==========================================
+    # 📦 PERSIST HIERARCHY: Epic → Story → Task
+    # ==========================================
+    epic_cache = {}   # epic_name → epic_id (dedup)
+    story_cache = {}  # (epic_id, story_name) → story_id (dedup)
+
+    for t in pending_plan["tasks"]:
+        epic_name = t.get("epic") or pending_plan.get("goal", "Default Epic")
+        story_name = t.get("story", "")
+
+        # --- Create or reuse Epic ---
+        if epic_name and epic_name not in epic_cache:
+            epic_doc = {
+                "name": epic_name,
+                "description": f"Auto-generated from plan: {pending_plan.get('goal', '')}",
+                "project_id": "default",
+                "color": "#6C5DD3",
+                "status": "active",
+                "created_by": username,
+                "created_at": datetime.now()
+            }
+            epic_result = epics_collection.insert_one(epic_doc)
+            epic_cache[epic_name] = str(epic_result.inserted_id)
+        epic_id = epic_cache.get(epic_name, "")
+
+        # --- Create or reuse Story ---
+        story_id = ""
+        if story_name:
+            cache_key = (epic_id, story_name)
+            if cache_key not in story_cache:
+                story_doc = {
+                    "name": story_name,
+                    "description": "",
+                    "epic_id": epic_id,
+                    "story_points": 0,
+                    "assigned_to": "Unassigned",
+                    "status": "todo",
+                    "created_by": username,
+                    "created_at": datetime.now()
+                }
+                story_result = stories_collection.insert_one(story_doc)
+                story_cache[cache_key] = str(story_result.inserted_id)
+            story_id = story_cache.get(cache_key, "")
+
+        # --- Create Task in MongoDB ---
+        task_doc = {
+            "name": t.get("name", "Task"),
+            "description": t.get("desc", ""),
+            "epic_id": epic_id,
+            "story_id": story_id,
+            "sprint_id": "",
+            "assigned_to": t.get("owner", "Unassigned"),
+            "status": "todo",
+            "due_date": t.get("due_date"),
+            "start_date": t.get("start_date"),
+            "estimated_hours": t.get("estimated_hours", 0),
+            "actual_hours": 0,
+            "depends_on": t.get("depends_on", []),
+            "created_by": username,
+            "created_at": datetime.now()
+        }
+        tasks_collection.insert_one(task_doc)
+
+    # ==========================================
+    # 📋 CREATE TRELLO CARDS (original flow)
+    # ==========================================
     for t in pending_plan["tasks"]:
         name = t.get("name", "Task")
         owner = t.get("owner", "Unassigned")
@@ -3126,6 +3561,189 @@ def get_sprint_scope_health(sprint_id: str, username: str = Depends(get_current_
         "is_overloaded": is_overloaded,
         "defer_suggestions": defer_suggestions
     }
+
+# ==========================================
+# 🧠 TEAM MOOD WEBHOOK (n8n → Slack poll results)
+# ==========================================
+@app.post("/webhook/slack-mood")
+def receive_mood_webhook(mood: MoodSubmit):
+    """
+    Receives mood data from n8n Slack poll results.
+    Called automatically by the weekly n8n cron workflow.
+    No auth required — designed for webhook ingestion.
+    """
+    try:
+        now = datetime.now()
+        entry = {
+            "username": mood.username,
+            "score": max(1, min(5, mood.score)),  # Clamp 1-5
+            "note": mood.note,
+            "week": now.strftime("%Y-W%W"),
+            "timestamp": now.strftime("%Y-%m-%d %H:%M")
+        }
+        mood_collection.insert_one(entry)
+        
+        # Alert if mood is critically low
+        if mood.score <= 2:
+            try:
+                alert_msg = f"⚠️ Team Health Alert: {mood.username} reported mood score {mood.score}/5"
+                if mood.note:
+                    alert_msg += f" — \"{mood.note}\""
+                send_slack_announcement.invoke({"message": alert_msg})
+            except:
+                pass
+        
+        return {"msg": f"Mood recorded for {mood.username}: {mood.score}/5"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/mood-history")
+def get_mood_history(username: str = None, weeks: int = 8, current_user: str = Depends(get_current_user)):
+    """Returns mood history for chart visualization."""
+    try:
+        query = {}
+        if username:
+            query["username"] = {"$regex": username, "$options": "i"}
+        entries = list(mood_collection.find(query, {"_id": 0}).sort("timestamp", -1).limit(weeks * 7))
+        return entries
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 🔗 GITHUB COMMIT WEBHOOK (n8n → GitHub push events)
+# ==========================================
+@app.post("/webhook/github-commit")
+def receive_commit_webhook(commit: CommitWebhookPayload):
+    """
+    Receives GitHub commit data from n8n GitHub webhook.
+    Analyzes diff size against time logged and flags low-output patterns.
+    No auth required — designed for webhook ingestion.
+    """
+    try:
+        now = datetime.now()
+        doc = {
+            "repo": commit.repo,
+            "commit_sha": commit.commit_sha,
+            "author": commit.author,
+            "message": commit.message,
+            "lines_added": commit.lines_added,
+            "lines_removed": commit.lines_removed,
+            "files_changed": commit.files_changed,
+            "timestamp": now.strftime("%Y-%m-%d %H:%M")
+        }
+        commit_logs_collection.insert_one(doc)
+        
+        # Check for low-output pattern
+        total_lines = commit.lines_added + commit.lines_removed
+        today_str = now.strftime("%Y-%m-%d")
+        
+        # Find time logged today by this developer
+        today_start = datetime.strptime(today_str, "%Y-%m-%d")
+        today_logs = list(time_logs_collection.find({
+            "logged_by": {"$regex": commit.author, "$options": "i"},
+            "timestamp": {"$gte": today_start}
+        }))
+        hours_today = sum(l.get("hours", 0) for l in today_logs)
+        
+        # Flag if > 8 hours logged but very few lines changed total today
+        alert_sent = False
+        if hours_today >= 8 and total_lines < 10:
+            try:
+                alert_msg = f"🔍 **Low Output Pattern:** {commit.author} has logged {hours_today:.0f}h today but only changed {total_lines} lines of code. " \
+                           f"The task may need to be broken into smaller subtasks for better tracking."
+                send_slack_announcement.invoke({"message": alert_msg})
+                alert_sent = True
+            except:
+                pass
+        
+        return {"msg": f"Commit by {commit.author} recorded (+{commit.lines_added}/-{commit.lines_removed} lines)", "alert_sent": alert_sent}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/commit-analysis")
+def get_commit_analysis(days: int = 7, username: str = Depends(get_current_user)):
+    """Returns commit log data for dashboard visualization."""
+    try:
+        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        commits = list(commit_logs_collection.find(
+            {"timestamp": {"$gte": cutoff}}, {"_id": 0}
+        ).sort("timestamp", -1))
+        
+        # Calculate per-author totals
+        author_stats = {}
+        for c in commits:
+            author = c.get("author", "Unknown")
+            if author not in author_stats:
+                author_stats[author] = {"commits": 0, "lines_added": 0, "lines_removed": 0}
+            author_stats[author]["commits"] += 1
+            author_stats[author]["lines_added"] += c.get("lines_added", 0)
+            author_stats[author]["lines_removed"] += c.get("lines_removed", 0)
+        
+        return {"commits": commits, "author_stats": author_stats, "period_days": days}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 🧠 TEAM HEALTH ENDPOINT
+# ==========================================
+@app.get("/team-health")
+def get_team_health_report(username: str = Depends(get_current_user)):
+    """Returns team health data correlating mood with velocity."""
+    try:
+        employees = list(employees_collection.find({}, {"_id": 0}))
+        four_weeks_ago = (datetime.now() - timedelta(weeks=4)).strftime("%Y-%m-%d")
+        mood_entries = list(mood_collection.find({"timestamp": {"$gte": four_weeks_ago}}))
+        active_tasks = list(tasks_collection.find({"status": {"$ne": "done"}}))
+        
+        team_data = []
+        for emp in employees:
+            emp_name = emp.get("name", "Unknown")
+            emp_moods = [m for m in mood_entries if m.get("username", "").lower() == emp_name.lower()]
+            avg_mood = sum(m.get("score", 3) for m in emp_moods) / max(len(emp_moods), 1) if emp_moods else None
+            
+            emp_tasks = [t for t in active_tasks if t.get("assigned_to", "").lower() == emp_name.lower()]
+            overdue = 0
+            for t in emp_tasks:
+                due = t.get("due_date")
+                if due:
+                    try:
+                        due_dt = datetime.strptime(due, "%Y-%m-%d") if isinstance(due, str) else due
+                        if due_dt < datetime.now():
+                            overdue += 1
+                    except:
+                        pass
+            
+            status = "healthy"
+            if avg_mood and avg_mood < 3 and overdue > 0:
+                status = "at_risk"
+            elif len(emp_tasks) > 5:
+                status = "overloaded"
+            
+            team_data.append({
+                "name": emp_name,
+                "role": emp.get("role", ""),
+                "avg_mood": round(avg_mood, 1) if avg_mood else None,
+                "mood_entries": len(emp_moods),
+                "active_tasks": len(emp_tasks),
+                "overdue_tasks": overdue,
+                "status": status
+            })
+        
+        return {"team": team_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 📋 SPRINT RETROSPECTIVE ENDPOINT
+# ==========================================
+@app.post("/sprints/{sprint_id}/retrospective")
+def create_retrospective(sprint_id: str, user_info: dict = Depends(require_role("admin", "pm"))):
+    """Generate a sprint retrospective report on demand."""
+    try:
+        result = generate_sprint_retrospective.invoke({"sprint_id": sprint_id})
+        return {"report": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def health_check():

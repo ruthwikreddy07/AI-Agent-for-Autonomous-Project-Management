@@ -15,7 +15,11 @@ VALID_ROLES = ["admin", "pm", "developer"]
 class User(BaseModel):
     username: str
     password: str
-    role: str = "developer"  # Default role for new users
+    role: str = "developer"  # Default role
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    profession: Optional[str] = None
+    project_focus: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
     display_name: str
@@ -228,4 +232,43 @@ class RiskUpdate(BaseModel):
     mitigation: Optional[str] = None
     probability: Optional[int] = None
     impact: Optional[int] = None
+
+# ==========================================
+# 🧠 TEAM MOOD & VELOCITY INTELLIGENCE
+# ==========================================
+
+class MoodSubmit(BaseModel):
+    username: str
+    score: int  # 1-5 (1 = overwhelmed, 5 = great)
+    note: str = ""
+
+class MoodEntry(BaseModel):
+    username: str
+    score: int
+    note: str = ""
+    week: str = ""   # e.g. "2026-W15"
+    timestamp: str = ""
+
+# ==========================================
+# 🔗 COMMIT-TO-COST ANALYZER
+# ==========================================
+
+class CommitLog(BaseModel):
+    repo: str = ""
+    commit_sha: str = ""
+    author: str = ""
+    message: str = ""
+    lines_added: int = 0
+    lines_removed: int = 0
+    files_changed: int = 0
+    timestamp: str = ""
+
+class CommitWebhookPayload(BaseModel):
+    repo: str = ""
+    commit_sha: str = ""
+    author: str = ""
+    message: str = ""
+    lines_added: int = 0
+    lines_removed: int = 0
+    files_changed: int = 0
 

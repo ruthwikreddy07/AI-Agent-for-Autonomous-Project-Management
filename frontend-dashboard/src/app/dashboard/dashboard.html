@@ -214,6 +214,12 @@
           </svg>
           Start Session
         </button>
+        <button class="btn-primary" *ngIf="isPM" (click)="generateRetrospective()" style="margin-left: 12px; background: rgba(108, 93, 211, 0.1); color: #6C5DD3;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          Review Retro
+        </button>
       </div>
     </section>
 
@@ -467,3 +473,31 @@
         </div>
       </div>
     </section>
+
+    <!-- AI Retrospective Modal -->
+    <div class="modal-overlay" *ngIf="showRetroModal" (click)="showRetroModal = false">
+      <div class="modal-box retro-modal" (click)="$event.stopPropagation()" style="width: 600px; max-height: 80vh; overflow-y: auto;">
+        <h3 style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">✨</span> AI Sprint Retrospective
+        </h3>
+        <p style="color:#808191; font-size:13px; margin-top:-10px;">Automatically generated based on sprint performance and hours logged.</p>
+        
+        <div *ngIf="isLoadingRetro" style="padding: 40px; text-align: center; color: #6C5DD3;">
+          <svg style="animation: spin 1s linear infinite;" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 11-6.219-8.56"></path>
+          </svg>
+          <p style="margin-top: 15px; font-weight: 500;">Analyzing sprint data...</p>
+        </div>
+
+        <div *ngIf="!isLoadingRetro && retroReport" class="retro-report-content" style="white-space: pre-wrap; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 12px; margin-top: 20px;">
+          {{ retroReport }}
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end;">
+          <button class="btn-primary" (click)="showRetroModal = false">Close</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
