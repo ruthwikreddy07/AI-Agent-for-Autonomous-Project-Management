@@ -32,7 +32,7 @@
 
 ## 📌 Overview
 
-Traditional project management suffers from fragmented tooling, manual coordination, poor skill-based task allocation, budget overruns, and no proactive risk detection. Managers constantly track dependencies, deadlines, and costs manually — leading to persistent inefficiencies.
+Traditional project management suffers from fragmented tooling, manual coordination, inefficient skill-based task allocation, budget overruns, and a lack of proactive risk detection. Managers constantly track dependencies, deadlines, and costs manually — leading to persistent inefficiencies.
 
 **This project solves that** by introducing an **Autonomous AI Project Management Agent** that converts high-level goals into structured execution plans, monitors progress in real time, and self-heals when things go off track — all while keeping humans in control of critical decisions.
 
