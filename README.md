@@ -40,11 +40,14 @@ Traditional project management suffers from fragmented tooling, manual coordinat
 
 | | |
 | :---: | :--- |
-| 🧠 | **Autonomous AI Agent Architecture** — LangChain tool-binding with 7 specialized tools for end-to-end project orchestration |
-| 🔗 | **Real-World Integrations** — Trello (task tracking), Slack (alerts), Google Calendar (scheduling), all wired through n8n middleware |
+| 🧠 | **Autonomous AI Agent Architecture** — LangChain tool-binding with 13 specialized tools for end-to-end project orchestration, sprint planning, and risk prediction |
+| 🏃 | **Full Agile Engine** — Epic → Story → Task hierarchy, sprint planning with burndown charts, scope creep detection, and time tracking |
+| 📊 | **Visual Timeline** — Canvas-rendered Gantt chart with dependency arrows, critical path highlighting, zoom controls, and epic filtering |
+| 🔗 | **Real-World Integrations** — Trello, Slack, Google Calendar, Gmail, and GitHub, all wired through n8n middleware (8 active workflows) |
 | 🔁 | **Self-Healing Scheduling** — Automatically detects overdue tasks, reschedules them to the next business day, and cascades date changes to dependent tasks |
-| 💰 | **Cost-Aware Planning** — Budget estimation using employee hourly rates, tool costs, and real-time burn rate analysis |
-| 🔐 | **Production-Ready** — JWT authentication, session-based chat memory, CORS-hardened FastAPI backend, and Angular 20 SSR frontend |
+| ⚠️ | **AI Risk Intelligence** — Pre-mortem risk prediction with 5×5 probability × impact matrix and AI-generated mitigation strategies |
+| 💰 | **Cost-Aware Planning** — Budget estimation using employee hourly rates, tool costs, and real-time burn rate analysis with actual vs estimated reconciliation |
+| 🔐 | **Production-Ready** — JWT auth with RBAC (Admin/PM/Developer), session-based chat memory, CORS-hardened FastAPI backend, and Angular 20 SSR frontend |
 
 ---
 
@@ -175,9 +178,10 @@ graph TD
 
 | Technology | File(s) | Purpose |
 | :--- | :--- | :--- |
-| **Python + FastAPI** | `server.py` | REST API server, request handling, and all core business logic (1800+ lines) |
-| **JWT + Passlib (Bcrypt)** | `server.py` | Secure token-based authentication and password hashing |
-| **MongoDB (PyMongo)** | `server.py`, `create_admin.py` | Stores users, employees (skills, roles, hourly rates), and session-based chat history |
+| **Python + FastAPI** | `server.py` | REST API server with 46 endpoints, request handling, and all core business logic (3100+ lines) |
+| **JWT + Passlib (Bcrypt)** | `server.py` | Secure token-based authentication with role-encoded JWT claims |
+| **RBAC Middleware** | `server.py` | `require_role()` dependency — protects 14 endpoints with Admin/PM/Developer access control |
+| **MongoDB (PyMongo)** | `server.py`, `create_admin.py` | 11 collections: users, employees, chats, time_logs, projects, epics, stories, tasks, sprints, meetings, risks |
 
 ### AI & Machine Learning
 
@@ -185,7 +189,7 @@ graph TD
 | :--- | :--- | :--- |
 | **Groq API (Llama 3.1-8b-instant)** | `server.py` | Primary high-speed LLM for reasoning, planning, and tool invocation |
 | **Groq API (Llama 3.3-70b-versatile)** | `agent.py` | Standalone CLI agent prototype for testing tool calls |
-| **LangChain** | `server.py` | Tool orchestration — binds 7 tools to the LLM, manages multi-turn context |
+| **LangChain** | `server.py` | Tool orchestration — binds 13 tools to the LLM, manages multi-turn context |
 | **Google Gemini (gemini-embedding-001)** | `server.py` | Remote text-to-vector embeddings for the RAG memory pipeline |
 | **SentenceTransformers (all-MiniLM-L6-v2)** | `ingest.py` | Local embedding generation for the standalone document ingestion script |
 | **Pinecone** | `server.py`, `ingest.py` | Vector database for long-term project memory (RAG retrieval) |
@@ -205,8 +209,9 @@ graph TD
 
 | Technology | File(s) | Purpose |
 | :--- | :--- | :--- |
-| **Angular 20 (SSR)** | `frontend-dashboard/` | Full interactive dashboard with 5 page components: Login, Dashboard, Chat, Team, Settings |
-| **Chart.js** | `dashboard/` | Line charts (task timeline) and donut charts (task status distribution) on the dashboard |
+| **Angular 20 (SSR)** | `frontend-dashboard/` | Full interactive dashboard with 8 page components: Landing, Login, Dashboard, Chat, Team, Settings, Backlog (Epic/Story/Task tree), Timeline (Gantt), Risk Matrix |
+| **Chart.js** | `dashboard/` | Line charts (task timeline), donut charts (task status distribution), and sprint burndown charts |
+| **Canvas API** | `timeline/` | Custom-rendered Gantt chart with grid, dependency arrows, critical path glow, and interactive tooltips |
 
 ---
 
@@ -222,16 +227,19 @@ graph TB
     classDef middleware fill:#EA4B71,stroke:#fff,stroke-width:2px,color:#fff;
 
     subgraph Frontend_Layer ["Frontend Layer"]
-        UI["Angular 20 SSR Dashboard\n(Login, Dashboard, Chat, Team, Settings)"]:::frontend
-        Charts["Chart.js\n(Line + Donut Charts)"]:::frontend
+        UI["Angular 20 SSR Dashboard\n(Landing, Login, Dashboard, Chat, Team,\nSettings, Backlog, Timeline, Risk Matrix)"]:::frontend
+        Charts["Chart.js\n(Line + Donut + Burndown)"]:::frontend
     end
 
     subgraph Backend_Layer ["AI Brain - Core Backend"]
-        API["FastAPI REST API\n(JWT Auth, CORS, 17 Endpoints)"]:::backend
-        Tools["LangChain Tool Orchestrator\n(7 Bound Tools)"]:::backend
+        API["FastAPI REST API\n(JWT Auth + RBAC, CORS, 46 Endpoints)"]:::backend
+        Tools["LangChain Tool Orchestrator\n(13 Bound Tools)"]:::backend
         Processor["Unified Tool Processor\n(Multi-turn Execution Loop)"]:::backend
         Planner["Planning Engine\n(Topological Sort, Smart Timeline,\nBudget Estimation)"]:::backend
         Healer["Self-Healing Engine\n(Overdue Detection,\nDependency Cascade)"]:::backend
+        SprintEngine["Sprint Engine\n(Capacity Planning,\nBurndown Calculator)"]:::backend
+        RiskEngine["Risk Prediction Engine\n(Pre-Mortem AI,\n5x5 Matrix)"]:::backend
+        ScopeDetector["Scope Creep Detector\n(110% Threshold,\nDefer Suggestions)"]:::backend
         Upload["Document Upload Pipeline\n(Chunking + Vectorization)"]:::backend
     end
 
@@ -243,7 +251,7 @@ graph TB
     end
 
     subgraph DB_Layer ["Database Layer"]
-        Mongo[("MongoDB Atlas\n(Users, Employees,\nChat History)")]:::db
+        Mongo[("MongoDB Atlas\n(11 Collections: Users, Employees,\nChats, Epics, Stories, Tasks,\nSprints, Risks, Meetings, etc.)")]:::db
         Pinecone[("Pinecone Vector DB\n(Project Memory /\nRAG Knowledge)")]:::db
     end
 
@@ -367,7 +375,56 @@ graph TB
 - Resolves Trello card IDs by querying the board's `idShort` field against the referenced number
 - Eliminates the need for manual Trello status updates when developers commit code
 
-### 9. Advanced Operational Capabilities
+### 9. Epic → Story → Task Hierarchy (Work Breakdown Structure)
+- Full **3-level work decomposition**: Epics contain Stories, Stories contain Tasks
+- CRUD operations on all levels with `POST/GET/PUT/DELETE /epics`, `POST/GET/PUT /stories`, `POST/GET/PUT /tasks`
+- **Backlog Component** in Angular: collapsible tree view with expand/collapse, inline stats (total epics/stories/tasks/points)
+- Modal-based item creation with color picker for epics and story-point assignment for stories
+- `GET /work-breakdown` aggregates the entire tree for the dashboard
+- All create/update/delete operations are **RBAC-protected** (Admin/PM only)
+
+### 10. Sprint Planning Engine (`auto_plan_sprint`)
+- AI autonomously groups backlog tasks into **time-boxed sprints** based on capacity (hours/week)
+- Sprint CRUD: `POST/GET/PUT /sprints` with `name`, `goal`, `start_date`, `end_date`, `capacity_hours`
+- Dynamic sprint metrics: committed tasks, committed hours, completed tasks, completed hours — calculated live from `tasks_collection`
+- **Sprint Burndown Chart**: `GET /sprints/{id}/burndown` returns ideal vs actual lines computed from `time_logs_collection`
+- Sprint creation is RBAC-protected (Admin/PM only)
+
+### 11. Visual Gantt Chart Timeline
+- `GET /gantt-data` endpoint returns all tasks with `start_date`, `end_date`, `dependencies`, `epic_name`, `epic_color`, and `is_critical_path`
+- **Canvas-rendered Gantt** (477 lines) with: date grid header, weekend shading, today marker line
+- **Dependency arrows**: Bézier curves connecting dependent task bars
+- **Critical path** highlighted with orange glow and solid border
+- Zoom in/out controls, epic-based filtering, and hover tooltips showing task details
+- Left panel shows task names with status indicator dots
+
+### 12. AI Risk Prediction (`predict_risks`)
+- AI-powered **pre-mortem analysis** that scans the project plan for red flags
+- Generates a ranked **Risk Register** with: risk name, probability (1-5), impact (1-5), risk score, mitigation strategy
+- **Risk Matrix Component**: 5×5 interactive grid color-coded by severity (green/yellow/orange/red)
+- `GET /risk-register` and `PUT /risk-register/{id}` for viewing and updating risk status
+- "Predict Risks" button triggers AI analysis and populates MongoDB automatically
+
+### 13. Scope Creep Detector (`detect_scope_creep`)
+- `GET /sprints/{id}/scope-health` calculates sprint utilization percentage
+- **Overload threshold**: flags sprints exceeding 110% of declared capacity
+- Returns `defer_suggestions` — ordered list of unstarted tasks to move to the next sprint
+- Suggestions are sorted by estimated hours (smallest first) to minimize scope disruption
+
+### 14. Time Tracking (`log_time`)
+- `POST /time-log` records actual hours worked per task with timestamped entries
+- `GET /time-log/{task_name}` returns all logged entries and total hours
+- Data feeds directly into sprint burndown calculations (actual vs ideal line)
+- Enables **Actual vs Estimated** cost reconciliation across the project
+
+### 15. Role-Based Access Control (RBAC)
+- Three-tier role system: **Admin**, **PM** (Project Manager), **Developer**
+- JWT tokens now include `role` claim, extracted by `get_current_user_with_role()`
+- `require_role()` FastAPI dependency protects **14 sensitive endpoints** (employee management, plan approval, epic/story CRUD, sprint management, risk updates)
+- `GET /user/role` returns current user's role; `PUT /user/role/{username}` (admin-only) assigns roles
+- Frontend conditionally renders UI elements via `isPM()` and `isAdmin()` checks in `ai.service.ts`
+
+### 16. Advanced Operational Capabilities
 
 | Capability | Implementation |
 | :--- | :--- |
@@ -389,8 +446,9 @@ graph TB
 ```text
 ai-agent-manager/
 ├── ai-brain/                              # Python / FastAPI Backend
-│   ├── server.py                          # Core application — 17 API endpoints, 7 LangChain tools,
-│   │                                      #   planning engine, self-healing, dashboard analytics
+│   ├── server.py                          # Core application — 46 API endpoints, 13 LangChain tools,
+│   │                                      #   planning engine, sprint engine, risk engine, self-healing,
+│   │                                      #   RBAC middleware, gantt-data, scope-health, dashboard analytics
 │   ├── agent.py                           # Standalone CLI agent prototype (Llama 3.3-70b)
 │   ├── calendar_tool.py                   # Google Calendar API — availability, booking, Meet links
 │   ├── ingest.py                          # Standalone document ingestion with SentenceTransformers
@@ -404,17 +462,22 @@ ai-agent-manager/
 ├── frontend-dashboard/                    # Angular 20 SSR Frontend
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── ai.service.ts              # HTTP service — all API calls + mock mode toggle
-│   │   │   ├── app.ts                     # Root component with sidebar navigation
-│   │   │   ├── app.routes.ts              # Route definitions (5 pages)
+│   │   │   ├── ai.service.ts              # HTTP service — all API calls, RBAC helpers, mock mode toggle
+│   │   │   ├── app.ts                     # Root component with view routing + login modal
+│   │   │   ├── app.routes.ts              # Route definitions (8 pages)
 │   │   │   ├── app.css                    # Global application styles
+│   │   │   ├── landing/                   # Marketing landing page with neural canvas animation
 │   │   │   ├── login/                     # Authentication page (login + register)
 │   │   │   ├── dashboard/                 # Main dashboard — charts, stats, finance table
 │   │   │   ├── chat/                      # AI chat interface with approve/reject controls
 │   │   │   ├── team/                      # Employee management (add/edit/delete)
-│   │   │   ├── settings/                  # User profile settings
+│   │   │   ├── settings/                  # User profile + external link settings
+│   │   │   ├── backlog/                   # Epic → Story → Task hierarchy tree view
+│   │   │   ├── timeline/                  # Canvas-rendered Gantt chart (477 LOC)
+│   │   │   ├── risk-matrix/               # 5×5 risk probability/impact matrix
 │   │   │   └── tasks/                     # Task view component
 │   │   ├── environments/                  # Environment configs (dev/prod API URLs)
+│   │   ├── assets/                        # Images, animations (neural canvas, hero, previews)
 │   │   ├── server.ts                      # Express SSR server
 │   │   └── index.html                     # Root HTML template
 │   ├── angular.json                       # Angular project configuration
@@ -631,9 +694,11 @@ Both services are deployed on **Render**.
 | :--- | :--- |
 | **Autonomous Reasoning** | Goes beyond CRUD — the AI reasons about task dependencies, employee skills, budget constraints, and calendar availability before acting |
 | **Self-Healing** | No other PM tool automatically reschedules overdue tasks AND cascades the changes to all dependent tasks |
-| **Cost Intelligence** | Real-time burn rate analysis derived from actual Trello board state, not manual input |
-| **Tool Orchestration** | 7 specialized tools bound to LangChain, invoked dynamically based on user intent with multi-turn execution loops |
-| **Production Architecture** | JWT auth, CORS hardening, retry logic, anti-flood protection, session-based memory — not a prototype |
+| **Full Agile Engine** | Epic → Story → Task hierarchy, sprint planning with burndown, scope creep detection, and time tracking — all AI-driven |
+| **Visual Intelligence** | Canvas-rendered Gantt chart with critical path, dependency arrows, and 5×5 probability/impact risk matrix |
+| **Cost Intelligence** | Real-time burn rate analysis plus actual vs estimated reconciliation from time tracking data |
+| **Tool Orchestration** | 13 specialized tools bound to LangChain, invoked dynamically based on user intent with multi-turn execution loops |
+| **Production Architecture** | JWT auth with RBAC (3 roles, 14 protected endpoints), CORS hardening, retry logic, anti-flood protection, session-based memory |
 
 **Key Outcomes:**
 - Reduces cognitive overload on project managers
@@ -666,10 +731,15 @@ graph LR
     P2 --> F6["Meeting Transcript\nAI Pipeline"]:::feature
 
     P3 --> F7["Daily Standup\n(DONE)"]:::done
-    P3 --> F8["Sprint Velocity\nTracking"]:::feature
+    P3 --> F8["Sprint Engine\n(DONE)"]:::done
+    P3 --> F9["Gantt Chart\n(DONE)"]:::done
+    P3 --> F10["Scope Creep\nDetector (DONE)"]:::done
+    P3 --> F11["Sprint Velocity\nTracking"]:::feature
 
-    P4 --> F9["Role-Based Access\nControl (RBAC)"]:::feature
-    P4 --> F10["Audit Logging\nDashboard"]:::feature
+    P4 --> F12["RBAC\n(DONE)"]:::done
+    P4 --> F13["Risk Matrix\n(DONE)"]:::done
+    P4 --> F14["Time Tracking\n(DONE)"]:::done
+    P4 --> F15["Audit Logging\nDashboard"]:::feature
 ```
 
 ### Intelligence Upgrades
@@ -693,14 +763,19 @@ graph LR
 | Feature | Status | Description | Technology |
 | :--- | :---: | :--- | :--- |
 | **Daily Standup Report** | ✅ Done | Automated cron job at 9 AM reads all Trello columns, formats a structured standup, and posts to Slack | n8n Cron + Slack API |
-| **Sprint Velocity Tracking** | 🔜 Planned | Calculate and visualize team velocity based on completed story points per sprint | Chart.js + MongoDB |
+| **Sprint Planning Engine** | ✅ Done | AI groups tasks into time-boxed sprints with capacity tracking, burndown charts, and scope-health detection | LangChain `auto_plan_sprint` + FastAPI |
+| **Gantt Chart Timeline** | ✅ Done | Canvas-rendered Gantt with dependency arrows, critical path highlighting, zoom controls, epic filtering, and hover tooltips | Angular Canvas API + FastAPI `/gantt-data` |
+| **Scope Creep Detector** | ✅ Done | Flags sprints >110% capacity, suggests specific tasks to defer to the next sprint | FastAPI `/scope-health` + `detect_scope_creep` tool |
+| **Sprint Velocity Tracking** | 🔜 Planned | Calculate and visualize team velocity trends based on completed story points per sprint | Chart.js + MongoDB |
 
 ### Enterprise Features
 
-| Feature | Description | Technology |
-| :--- | :--- | :--- |
-| **Role-Based Access Control** | Add `role` field (Admin/Manager/Dev) to User model with FastAPI middleware permission checks | FastAPI `Depends` |
-| **Audit Logging** | Record all API actions to a `logs` collection with user identity, action type, and timestamp; expose via dashboard | MongoDB + Angular |
+| Feature | Status | Description | Technology |
+| :--- | :---: | :--- | :--- |
+| **Role-Based Access Control** | ✅ Done | Three-tier roles (Admin/PM/Developer) with `require_role()` middleware protecting 14 sensitive endpoints | FastAPI `Depends` + JWT |
+| **AI Risk Prediction + Matrix** | ✅ Done | Pre-mortem AI analysis generates ranked risk register; 5×5 matrix component with color-coded severity grid | LangChain `predict_risks` + Angular |
+| **Time Tracking** | ✅ Done | Log actual hours per task; feeds into sprint burndown charts for actual vs estimated reconciliation | FastAPI + MongoDB `time_logs` |
+| **Audit Logging** | 🔜 Planned | Record all API actions to a `logs` collection with user identity, action type, and timestamp; expose via dashboard | MongoDB + Angular |
 
 ---
 
